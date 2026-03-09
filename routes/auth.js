@@ -48,27 +48,32 @@ module.exports = (config, db) => {
             return null;
         }
 
-        const host = process.env.SMTP_HOST || 'smtp.sendgrid.net';
+        const host = process.env.SMTP_HOST;
         const port = Number(process.env.SMTP_PORT || 587);
         const user = process.env.SMTP_USER;
         const pass = process.env.SMTP_PASS;
 
+        console.log(`[SMTP] Initializing transporter → host: ${host}, port: ${port}, user: ${user}, pass: ${pass ? 'SET' : 'MISSING'}`);
+
         if (!host || !user || !pass) {
-            console.error('[SMTP] Missing environment variables');
+            console.error('[SMTP] Missing one or more environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS)');
             return null;
         }
 
         return nodemailerLib.createTransport({
             host,
             port,
-            secure: port === 465,
+            secure: false, // false for port 587 (STARTTLS)
             auth: { user, pass },
-            // Add specialized settings for stability on Render
-            pool: true,
-            maxConnections: 1,
-            rateDelta: 20000,
-            rateLimit: 5,
-            connectionTimeout: 10000
+            tls: {
+                rejectUnauthorized: false,
+                ciphers: 'SSLv3'
+            },
+            connectionTimeout: 30000,
+            greetingTimeout: 20000,
+            socketTimeout: 30000,
+            debug: true,
+            logger: true
         });
     };
 
@@ -77,14 +82,15 @@ module.exports = (config, db) => {
     router.get('/debug-smtp', asyncHandler(async (req, res) => {
         const testEmail = req.query.email || 'test@example.com';
         const transporter = getTransporter();
-        
+
         if (!transporter) {
-            return res.json({ 
-                status: 'FAILED', 
+            return res.json({
+                status: 'FAILED',
                 reason: 'Transporter could not be initialized. Check environment variables.',
                 vars: {
-                    host: process.env.SMTP_HOST,
-                    user: process.env.SMTP_USER,
+                    host: process.env.SMTP_HOST || 'NOT SET',
+                    port: process.env.SMTP_PORT || 'NOT SET',
+                    user: process.env.SMTP_USER || 'NOT SET',
                     pass: process.env.SMTP_PASS ? 'SET' : 'MISSING'
                 }
             });
@@ -93,16 +99,16 @@ module.exports = (config, db) => {
         try {
             await transporter.verify();
             const info = await transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"DYPCET Cafeteria" <${process.env.SMTP_USER}>`,
                 to: testEmail,
-                subject: 'SMTP DEBUG TEST',
+                subject: 'SMTP DEBUG TEST - DYPCET Cafeteria',
                 text: 'If you see this, SMTP is working perfectly on Render!'
             });
             res.json({ status: 'SUCCESS', messageId: info.messageId, recipient: testEmail });
         } catch (err) {
-            res.status(500).json({ 
-                status: 'ERROR', 
-                message: err.message, 
+            res.status(500).json({
+                status: 'ERROR',
+                message: err.message,
                 code: err.code,
                 command: err.command
             });
@@ -199,7 +205,6 @@ module.exports = (config, db) => {
         const users = await db.query('SELECT id, email, name FROM users WHERE email = ? LIMIT 1', [email]);
         const user = users[0];
 
-        // Always generic response to avoid email enumeration.
         const genericMessage = 'If that email is registered, a password reset link has been sent.';
 
         if (!user) {
@@ -211,14 +216,11 @@ module.exports = (config, db) => {
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
         await db.query(
-            `UPDATE users
-             SET reset_password_token = ?, reset_password_expires = ?
-             WHERE id = ?`,
+            `UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?`,
             [hashedToken, expiresAt, user.id]
         );
 
-        // Dynamically determine the frontend base URL from the request headers if available, 
-        // otherwise fall back to the environment variable.
+        // Dynamically detect frontend URL from request origin
         let frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
         const origin = req.get('origin') || req.get('referer');
         if (origin) {
@@ -226,44 +228,57 @@ module.exports = (config, db) => {
                 const url = new URL(origin);
                 frontendBase = `${url.protocol}//${url.host}`;
             } catch (err) {
-                // Ignore invalid URLs and keep the fallback
+                // keep fallback
             }
         }
-        
+
         const resetLink = `${frontendBase}/reset-password?token=${rawToken}`;
+        console.log(`[AUTH] Reset link generated for ${user.email}: ${resetLink}`);
 
         const transporter = getTransporter();
-        console.log(`[AUTH] Forgot Password requested for: ${user.email}`);
-        
-        // Always send email if transporter is available
-        if (transporter) {
-            const senderName = "DYPCET Cafeteria Support";
-            const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
-            
-            transporter.sendMail({
-                from: `"${senderName}" <${senderEmail}>`,
-                to: user.email,
-                subject: 'Password Reset - DYPCET Cafeteria',
-                text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link will expire in 15 minutes.`,
-                html: `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                        <h2 style="color: #0A2342;">Password Reset Request</h2>
-                        <p>Hello <strong>${user.name || ''}</strong>,</p>
-                        <p>We received a request to reset your password for the DYPCET Cafeteria system.</p>
-                        <div style="margin: 30px 0; text-align: center;">
-                            <a href="${resetLink}" style="background-color: #F47F20; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reset My Password</a>
-                        </div>
-                        <p style="word-break: break-all; color: #666;">${resetLink}</p>
-                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                        <p style="font-size: 0.8rem; color: #999;">This link will expire in 15 minutes.</p>
-                       </div>`
-            }).catch(e => console.error("Mail Send Failed:", e.message));
+
+        if (!transporter) {
+            console.error('[AUTH] No transporter available — email not sent.');
+            return res.json({ message: genericMessage });
         }
 
-        // IMPROVED FREE FALLBACK: 
-        // We removed the _debug_link from the JSON response for security.
-        return res.json({ 
-            message: genericMessage
-        });
+        try {
+            const info = await transporter.sendMail({
+                from: `"DYPCET Cafeteria Support" <${process.env.SMTP_USER}>`,
+                to: user.email,
+                subject: 'Password Reset - DYPCET Cafeteria',
+                text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link expires in 15 minutes.\n\nIf you did not request this, ignore this email.`,
+                html: `
+                <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 30px; border: 1px solid #eee; border-radius: 10px;">
+                    <div style="text-align:center; margin-bottom: 20px;">
+                        <h2 style="color: #0A2342; margin:0;">🍽️ DYPCET Cafeteria</h2>
+                        <p style="color:#888; font-size:0.85rem;">Mahalaxmi Canteen Management System</p>
+                    </div>
+                    <h3 style="color: #333;">Password Reset Request</h3>
+                    <p>Hello <strong>${user.name || ''}</strong>,</p>
+                    <p>We received a request to reset your password. Click the button below to proceed:</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${resetLink}"
+                           style="background-color: #F47F20; color: white; padding: 14px 30px;
+                                  text-decoration: none; border-radius: 6px; font-weight: bold;
+                                  display: inline-block; font-size: 1rem;">
+                            Reset My Password
+                        </a>
+                    </div>
+                    <p style="font-size:0.85rem; color:#666;">Or copy this link into your browser:</p>
+                    <p style="word-break: break-all; font-size:0.8rem; color: #999;">${resetLink}</p>
+                    <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 0.75rem; color: #aaa; text-align:center;">
+                        This link expires in <strong>15 minutes</strong>. If you did not request a reset, ignore this email.
+                    </p>
+                </div>`
+            });
+            console.log(`[AUTH] Reset email sent successfully to ${user.email} — MessageId: ${info.messageId}`);
+        } catch (emailErr) {
+            console.error(`[AUTH] Failed to send reset email: ${emailErr.message}`);
+        }
+
+        return res.json({ message: genericMessage });
     }));
 
     // @desc    Reset password using token
@@ -284,8 +299,7 @@ module.exports = (config, db) => {
         const hashedToken = crypto.createHash('sha256').update(String(token)).digest('hex');
 
         const users = await db.query(
-            `SELECT id
-             FROM users
+            `SELECT id FROM users
              WHERE reset_password_token = ?
                AND reset_password_expires IS NOT NULL
                AND reset_password_expires > NOW()
@@ -303,11 +317,7 @@ module.exports = (config, db) => {
         const hashedPassword = await bcrypt.hash(String(newPassword), salt);
 
         await db.query(
-            `UPDATE users
-             SET password = ?,
-                 reset_password_token = NULL,
-                 reset_password_expires = NULL
-             WHERE id = ?`,
+            `UPDATE users SET password = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?`,
             [hashedPassword, user.id]
         );
 
