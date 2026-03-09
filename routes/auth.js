@@ -188,26 +188,40 @@ module.exports = (config, db) => {
         const resetLink = `${frontendBase}/reset-password?token=${rawToken}`;
 
         const transporter = getTransporter();
+        console.log(`[AUTH] Forgot Password requested for: ${user.email}`);
+        console.log(`[AUTH] Generated Link: ${resetLink}`);
+
         if (transporter) {
             const senderName = "DYPCET Cafeteria Support";
             const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
             
+            console.log(`[AUTH] Attempting to send email via: ${senderEmail}`);
+
             transporter.sendMail({
                 from: `"${senderName}" <${senderEmail}>`,
                 to: user.email,
                 subject: 'Password Reset - DYPCET Cafeteria',
                 text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link will expire in 15 minutes.`,
-                html: `<p>Hello ${user.name || ''},</p>
-                       <p>Reset your password using this link:</p>
-                       <p><a href="${resetLink}">${resetLink}</a></p>
-                       <p>This link will expire in 15 minutes.</p>`
-            }).then(() => {
-                console.log(`Password reset email sent to: ${user.email}`);
+                html: `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                        <h2 style="color: #0A2342;">Password Reset Request</h2>
+                        <p>Hello <strong>${user.name || ''}</strong>,</p>
+                        <p>We received a request to reset your password for the DYPCET Cafeteria system.</p>
+                        <div style="margin: 30px 0; text-align: center;">
+                            <a href="${resetLink}" style="background-color: #F47F20; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reset My Password</a>
+                        </div>
+                        <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+                        <p style="word-break: break-all; color: #666;">${resetLink}</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                        <p style="font-size: 0.8rem; color: #999;">This link will expire in 15 minutes. If you did not request this, you can safely ignore this email.</p>
+                       </div>`
+            }).then((info) => {
+                console.log(`[AUTH] Email sent successfully to ${user.email}. MessageId: ${info.messageId}`);
             }).catch((err) => {
-                console.error(`Failed to send reset email to ${user.email}:`, err.message);
+                console.error(`[AUTH] !!! EMAIL FAILED to ${user.email}:`, err);
             });
         } else {
-            console.log('Password reset link (SMTP/nodemailer unavailable):', resetLink);
+            console.error('[AUTH] !!! SMTP TRANSPORTER NOT AVAILABLE. Check environment variables.');
+            console.log('[AUTH] FALLBACK Link:', resetLink);
         }
 
         return res.json({ message: genericMessage });
