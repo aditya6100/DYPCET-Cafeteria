@@ -673,6 +673,36 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     }));
 
 
+    // @desc    Get orders for display board
+    // @route   GET /api/orders/display
+    // @access  Public (or protected if needed, but display board usually needs to be accessible)
+    router.get('/display', asyncHandler(async (req, res) => {
+        const preparing = await db.query(
+            "SELECT id, status, timestamp, user_id FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20"
+        );
+        const ready = await db.query(
+            "SELECT id, status, timestamp, user_id FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20"
+        );
+
+        // Map them to include customer names if possible
+        const fetchNames = async (orderList) => {
+            const enriched = [];
+            for (const o of orderList) {
+                const user = await db.query("SELECT name FROM users WHERE id = ?", [o.user_id]);
+                enriched.push({
+                    ...o,
+                    customer_name: user?.[0]?.name || 'Customer'
+                });
+            }
+            return enriched;
+        };
+
+        res.json({
+            preparing: await fetchNames(preparing),
+            ready: await fetchNames(ready)
+        });
+    }));
+
     // @desc    Get order history for logged-in user
     // @route   GET /api/orders/history
     router.get('/history', protect, asyncHandler(async (req, res) => {
