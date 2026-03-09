@@ -162,6 +162,81 @@ function AdminOrdersPage() {
     }
   };
 
+  const handlePrint = (order) => {
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+    const printWindow = window.open('', '_blank');
+    const content = `
+      <html>
+        <head>
+          <title>Order #${order.id} - DYPCET Cafeteria</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #333; }
+            .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+            .order-info { margin-bottom: 20px; display: flex; justify-content: space-between; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+            th { background-color: #f8f9fa; }
+            .total { text-align: right; font-size: 1.2em; font-weight: bold; margin-top: 10px; }
+            .instruction { background: #fdf6e3; padding: 10px; border-left: 4px solid #b58900; margin: 15px 0; font-style: italic; }
+            .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; border-top: 1px solid #eee; padding-top: 10px; }
+            @media print {
+              .no-print { display: none; }
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>DYPCET Cafeteria</h2>
+            <p>Order Receipt</p>
+          </div>
+          <div class="order-info">
+            <div>
+              <strong>Order ID:</strong> #${order.id}<br>
+              <strong>Date:</strong> ${new Date(order.timestamp).toLocaleString()}<br>
+              <strong>Status:</strong> ${order.status}
+            </div>
+            <div style="text-align: right;">
+              <strong>Customer:</strong> ${order.user_name || 'N/A'}<br>
+              <strong>Email:</strong> ${order.user_email || 'N/A'}
+            </div>
+          </div>
+          ${order.order_instruction ? `<div class="instruction"><strong>Instruction:</strong> ${order.order_instruction}</div>` : ''}
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.quantity}</td>
+                  <td>₹${(item.price || 0).toFixed(2)}</td>
+                  <td>₹${((item.price || 0) * item.quantity).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="total">Grand Total: ₹${(order.total_amount || 0).toFixed(2)}</div>
+          <div class="footer">
+            <p>Thank you for your order!</p>
+            <p>DYPCET Cafeteria Management System</p>
+          </div>
+          <script>
+            window.onload = function() { window.print(); window.close(); };
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(content);
+    printWindow.document.close();
+  };
+
   const getStatusColor = (status) => {
     const s = status?.toLowerCase() || '';
     if (s.includes('received') || s.includes('pending')) return '#ffc107';
@@ -437,6 +512,25 @@ function AdminOrdersPage() {
                 >
                   {getStatusIcon(selectedOrder.status)} {selectedOrder.status}
                 </div>
+                <button 
+                  className="print-btn" 
+                  onClick={() => handlePrint(selectedOrder)}
+                  style={{
+                    backgroundColor: '#333',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    marginLeft: '15px',
+                    border: 'none',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  🖨️ Print Receipt
+                </button>
               </div>
               <button className="close-btn" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); }}>×</button>
             </div>

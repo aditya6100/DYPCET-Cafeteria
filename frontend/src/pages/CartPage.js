@@ -39,8 +39,8 @@ function CartPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [orderInstruction, setOrderInstruction] = useState('');
 
-  const taxes = cartTotal * 0.05;
-  const totalAmountWithTaxes = cartTotal + taxes;
+  const taxes = 0;
+  const totalAmountWithTaxes = cartTotal;
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -209,10 +209,6 @@ function CartPage() {
           <div className="summary-row">
             <span>Subtotal</span>
             <span id="cart-subtotal">INR {cartTotal.toFixed(2)}</span>
-          </div>
-          <div className="summary-row">
-            <span>Taxes & Charges (5%)</span>
-            <span id="cart-taxes">INR {taxes.toFixed(2)}</span>
           </div>
           <div className="summary-row total">
             <span>Total</span>

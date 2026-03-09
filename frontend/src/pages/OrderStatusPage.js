@@ -7,7 +7,7 @@ import { useAlert } from '../hooks/useAlert';
 import apiRequest from '../utils/api';
 import { getToken } from '../utils/auth';
 
-const PREPARING_DURATION_MS = 12 * 60 * 1000; // 12 minutes
+const PREPARING_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const STATUS_POLL_INTERVAL_MS = 10000; // 10 seconds
 
 function OrderStatusPage() {
