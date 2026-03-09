@@ -42,9 +42,9 @@ module.exports = (config, db) => {
     const getTransporter = () => {
         let nodemailerLib = null;
         try {
-            // Lazy-load so server still runs if nodemailer is missing/corrupted.
             nodemailerLib = require('nodemailer');
         } catch (error) {
+            console.error('[SMTP] Nodemailer module not found!');
             return null;
         }
 
@@ -52,14 +52,22 @@ module.exports = (config, db) => {
         const port = Number(process.env.SMTP_PORT || 587);
         const user = process.env.SMTP_USER;
         const pass = process.env.SMTP_PASS;
-        const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
 
-        if (!host || !user || !pass) return null;
+        if (!host || !user || !pass) {
+            console.error('[SMTP] Missing environment variables:', { 
+                host: !!host, 
+                user: !!user, 
+                pass: !!pass 
+            });
+            return null;
+        }
+
+        console.log(`[SMTP] Initializing transporter for ${user} via ${host}`);
 
         return nodemailerLib.createTransport({
             host,
             port,
-            secure,
+            secure: String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true',
             auth: { user, pass }
         });
     };
