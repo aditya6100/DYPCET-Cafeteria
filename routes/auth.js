@@ -177,7 +177,9 @@ module.exports = (config, db) => {
 
         const transporter = getTransporter();
         if (transporter) {
-            await transporter.sendMail({
+            // We do NOT await here to prevent the request from hanging if SMTP is slow/broken.
+            // Or we can use a try-catch without blocking the response.
+            transporter.sendMail({
                 from: process.env.SMTP_FROM || process.env.SMTP_USER,
                 to: user.email,
                 subject: 'DYPCET Cafeteria - Password Reset',
@@ -186,6 +188,10 @@ module.exports = (config, db) => {
                        <p>Reset your password using this link:</p>
                        <p><a href="${resetLink}">${resetLink}</a></p>
                        <p>This link will expire in 15 minutes.</p>`
+            }).then(() => {
+                console.log(`Password reset email sent to: ${user.email}`);
+            }).catch((err) => {
+                console.error(`Failed to send reset email to ${user.email}:`, err.message);
             });
         } else {
             console.log('Password reset link (SMTP/nodemailer unavailable):', resetLink);
