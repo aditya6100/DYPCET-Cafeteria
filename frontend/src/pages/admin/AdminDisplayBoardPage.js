@@ -7,7 +7,7 @@ import './AdminDisplayBoardPage.css';
 
 const REFRESH_INTERVAL_MS = 10000;
 
-function AdminDisplayBoardPage() {
+function AdminDisplayBoardPage({ kiosk = false }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -69,14 +69,20 @@ function AdminDisplayBoardPage() {
     [orders]
   );
 
-  const handleFullscreen = () => {
+  const handleOpenKioskWindow = () => {
+    // Open the display board in a new dedicated window
+    const width = window.screen.width;
+    const height = window.screen.height;
+    window.open('/admin/display-window', 'DYPCET-Display-Kiosk', `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
+  };
+
+  const handleToggleFullscreen = () => {
     if (!containerRef.current) return;
-    
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
       containerRef.current.requestFullscreen().catch(err => {
-        showAlert(`Error attempting to enable full-screen mode: ${err.message}`, 'error');
+        showAlert(`Error: ${err.message}`, 'error');
       });
     }
   };
@@ -86,7 +92,7 @@ function AdminDisplayBoardPage() {
   }
 
   return (
-    <div className="display-board-page">
+    <div className={`display-board-page ${kiosk ? 'kiosk-mode' : ''}`}>
       <div className="display-board-container" ref={containerRef}>
         {/* HEADER SECTION */}
         <header className="display-header">
@@ -140,9 +146,15 @@ function AdminDisplayBoardPage() {
         )}
 
         <footer className="display-footer no-print">
-          <button onClick={handleFullscreen} className="fullscreen-btn">
-             Toggle Kiosk Fullscreen Mode
-          </button>
+          {!kiosk ? (
+            <button onClick={handleOpenKioskWindow} className="fullscreen-btn">
+               🚀 Open Kiosk in New Window
+            </button>
+          ) : (
+            <button onClick={handleToggleFullscreen} className="fullscreen-btn">
+               ⛶ Toggle Fullscreen Mode
+            </button>
+          )}
         </footer>
       </div>
     </div>

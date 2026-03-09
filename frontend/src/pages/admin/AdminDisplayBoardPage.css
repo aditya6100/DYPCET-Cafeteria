@@ -10,6 +10,19 @@
   font-family: 'Poppins', sans-serif;
 }
 
+/* Kiosk Mode Specifics */
+.display-board-page.kiosk-mode {
+  padding: 0;
+}
+
+.display-board-page.kiosk-mode .display-board-container {
+  border-radius: 0;
+  border: none;
+  height: 100vh;
+  width: 100vw;
+  max-width: none;
+}
+
 .display-board-container {
   width: 100%;
   max-width: 1400px;
