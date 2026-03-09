@@ -35,11 +35,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
       if (!Array.isArray(data)) {
         throw new Error('Invalid order data received.');
       }
-      const normalized = data.map((order) => ({
-        ...order,
-        items: typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || [])
-      }));
-      setOrders(normalized);
+      setOrders(data);
       setLastUpdated(new Date());
     } catch (error) {
       if (initial) {
@@ -82,10 +78,6 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     root.requestFullscreen();
   };
 
-  const handleOpenWindow = () => {
-    window.open('/admin/display-window', 'cafeteria-display-board', 'width=1920,height=1080');
-  };
-
   if (!isLoggedIn || !isAdmin) {
     return null;
   }
@@ -94,39 +86,36 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     <div className="display-board-page">
       <div className="display-board-header">
         <div className="display-title-wrap">
-          <span className="display-kicker">Live Kitchen Monitor</span>
-          <h2>{kiosk ? 'Live Order Display' : 'Cafeteria Live Display Board'}</h2>
+          <span className="display-kicker">● Live Kitchen Status</span>
+          <h2>Cafeteria Order Monitor</h2>
           <p>
-            Auto-refresh every 10 seconds
-            {lastUpdated ? ` | Last updated: ${lastUpdated.toLocaleTimeString()}` : ''}
+            {lastUpdated ? `Sync: ${lastUpdated.toLocaleTimeString()}` : 'Syncing...'}
           </p>
         </div>
         <div className="display-board-actions">
-          {!kiosk && (
-            <button type="button" className="button display-btn secondary" onClick={handleOpenWindow}>Open New Window</button>
-          )}
-          <button type="button" className="button display-btn" onClick={handleFullscreen}>Toggle Fullscreen</button>
+          <button type="button" className="display-btn" onClick={handleFullscreen}>
+            {document.fullscreenElement ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="loader">Loading display board...</div>
+        <div className="loader">INITIALIZING SYSTEM...</div>
       ) : (
         <div className="display-columns">
           <section className="display-column preparing">
             <div className="display-column-header">
-              <h3>Preparing Orders</h3>
+              <h3>IN PREPARATION</h3>
               <span>{preparingOrders.length}</span>
             </div>
             <div className="display-order-list">
               {preparingOrders.length === 0 ? (
-                <div className="display-empty">No preparing orders right now.</div>
+                <div className="display-empty">Kitchen is clear.</div>
               ) : (
                 preparingOrders.map((order) => (
                   <article key={`preparing-${order.id}`} className="display-order-card">
-                    <div className="card-top only-order-no">
-                      <strong>Order #{order.id}</strong>
-                    </div>
+                    <strong>{order.id}</strong>
+                    <div className="status-icon">👨‍🍳 COOKING</div>
                   </article>
                 ))
               )}
@@ -135,18 +124,17 @@ function AdminDisplayBoardPage({ kiosk = false }) {
 
           <section className="display-column completed">
             <div className="display-column-header">
-              <h3>Completed Orders</h3>
+              <h3>READY FOR PICKUP</h3>
               <span>{completedOrders.length}</span>
             </div>
             <div className="display-order-list">
               {completedOrders.length === 0 ? (
-                <div className="display-empty">No completed orders yet.</div>
+                <div className="display-empty">No orders ready yet.</div>
               ) : (
                 completedOrders.map((order) => (
                   <article key={`completed-${order.id}`} className="display-order-card">
-                    <div className="card-top only-order-no">
-                      <strong>Order #{order.id}</strong>
-                    </div>
+                    <strong>{order.id}</strong>
+                    <div className="status-icon">✅ READY</div>
                   </article>
                 ))
               )}
