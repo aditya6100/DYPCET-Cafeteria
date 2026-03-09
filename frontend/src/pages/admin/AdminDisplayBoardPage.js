@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiRequest from '../../utils/api';
 import { useAlert } from '../../hooks/useAlert';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,7 @@ function AdminDisplayBoardPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const containerRef = useRef(null);
   const { showAlert } = useAlert();
   const { isLoggedIn, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -69,12 +70,15 @@ function AdminDisplayBoardPage() {
   );
 
   const handleFullscreen = () => {
-    const root = document.documentElement;
+    if (!containerRef.current) return;
+    
     if (document.fullscreenElement) {
       document.exitFullscreen();
-      return;
+    } else {
+      containerRef.current.requestFullscreen().catch(err => {
+        showAlert(`Error attempting to enable full-screen mode: ${err.message}`, 'error');
+      });
     }
-    root.requestFullscreen();
   };
 
   if (!isLoggedIn || !isAdmin) {
@@ -83,11 +87,11 @@ function AdminDisplayBoardPage() {
 
   return (
     <div className="display-board-page">
-      <div className="display-board-container">
+      <div className="display-board-container" ref={containerRef}>
         {/* HEADER SECTION */}
         <header className="display-header">
           <div className="header-logo">🍽️</div>
-          <h1>DYPCET CAFETERIA</h1>
+          <h1 className="header-title">DYPCET CAFETERIA</h1>
           <div className="header-timer">
             {lastUpdated ? `Sync: ${lastUpdated.toLocaleTimeString()}` : '...'}
           </div>
@@ -137,7 +141,7 @@ function AdminDisplayBoardPage() {
 
         <footer className="display-footer no-print">
           <button onClick={handleFullscreen} className="fullscreen-btn">
-             Toggle Fullscreen Mode
+             Toggle Kiosk Fullscreen Mode
           </button>
         </footer>
       </div>
