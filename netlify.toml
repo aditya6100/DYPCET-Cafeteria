@@ -7,15 +7,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-```
-
-Click **"Commit changes"** ✅
-
----
-
-### **Also add Environment Variable on Netlify:**
-1. Go to your Netlify site → **Site Settings**
-2. Click **"Environment Variables"**
-3. Add:
-```
-REACT_APP_API_URL = https://dypcet-cafeteria.onrender.com
