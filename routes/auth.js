@@ -72,6 +72,43 @@ module.exports = (config, db) => {
         });
     };
 
+    // @desc    Debug SMTP Connection
+    // @route   GET /api/auth/debug-smtp
+    router.get('/debug-smtp', asyncHandler(async (req, res) => {
+        const testEmail = req.query.email || 'test@example.com';
+        const transporter = getTransporter();
+        
+        if (!transporter) {
+            return res.json({ 
+                status: 'FAILED', 
+                reason: 'Transporter could not be initialized. Check environment variables.',
+                vars: {
+                    host: process.env.SMTP_HOST,
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS ? 'SET' : 'MISSING'
+                }
+            });
+        }
+
+        try {
+            await transporter.verify();
+            const info = await transporter.sendMail({
+                from: process.env.SMTP_USER,
+                to: testEmail,
+                subject: 'SMTP DEBUG TEST',
+                text: 'If you see this, SMTP is working perfectly on Render!'
+            });
+            res.json({ status: 'SUCCESS', messageId: info.messageId, recipient: testEmail });
+        } catch (err) {
+            res.status(500).json({ 
+                status: 'ERROR', 
+                message: err.message, 
+                code: err.code,
+                command: err.command
+            });
+        }
+    }));
+
     // @desc    Register a new user
     // @route   POST /api/auth/register
     // @access  Public
