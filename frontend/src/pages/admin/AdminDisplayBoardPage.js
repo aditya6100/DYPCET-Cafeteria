@@ -6,10 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import './AdminDisplayBoardPage.css';
 
 const REFRESH_INTERVAL_MS = 10000;
-// We'll fetch more but the CSS will handle the "rotation" view
-const MAX_ORDERS_TO_FETCH = 30; 
 
-function AdminDisplayBoardPage({ kiosk = false }) {
+function AdminDisplayBoardPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -62,9 +60,9 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     [orders]
   );
 
-  const completedOrders = useMemo(
+  const readyOrders = useMemo(
     () => orders
-      .filter((o) => (o.status || '').toLowerCase() === 'completed' || (o.status || '').toLowerCase() === 'ready')
+      .filter((o) => (o.status || '').toLowerCase() === 'ready' || (o.status || '').toLowerCase() === 'completed')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 10),
     [orders]
@@ -85,88 +83,64 @@ function AdminDisplayBoardPage({ kiosk = false }) {
 
   return (
     <div className="display-board-page">
-      <div className="display-board-header">
-        <div className="display-title-wrap">
-          <span className="display-kicker">● Live Kitchen Status</span>
-          <h2>Cafeteria Order Monitor</h2>
-          <p>
-            {lastUpdated ? `Sync: ${lastUpdated.toLocaleTimeString()}` : 'Syncing...'}
-          </p>
-        </div>
-        <div className="display-board-actions">
-          <button type="button" className="display-btn" onClick={handleFullscreen}>
-            {document.fullscreenElement ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-          </button>
-        </div>
-      </div>
+      <div className="display-board-container">
+        {/* HEADER SECTION */}
+        <header className="display-header">
+          <div className="header-logo">🍽️</div>
+          <h1>DYPCET CAFETERIA</h1>
+          <div className="header-timer">
+            {lastUpdated ? `Sync: ${lastUpdated.toLocaleTimeString()}` : '...'}
+          </div>
+        </header>
 
-      {loading ? (
-        <div className="loader">INITIALIZING SYSTEM...</div>
-      ) : (
-        <div className="display-columns">
-          {/* PREPARING SECTION */}
-          <section className="display-column preparing">
-            <div className="display-column-header">
-              <h3>IN PREPARATION</h3>
-              <span className="count-badge">{preparingOrders.length}</span>
-            </div>
-            <div className="display-marquee-container">
-              <div className={`display-order-row ${preparingOrders.length > 6 ? 'animate-scroll' : ''}`}>
+        {loading ? (
+          <div className="loader">INITIALIZING...</div>
+        ) : (
+          <div className="display-main-grid">
+            {/* READY SECTION */}
+            <section className="display-split ready">
+              <div className="split-header">
+                <span className="status-icon">✅</span> READY
+              </div>
+              <div className="order-grid-compact">
+                {readyOrders.length === 0 ? (
+                  <div className="empty-msg">Waiting...</div>
+                ) : (
+                  readyOrders.map((order) => (
+                    <div key={`ready-${order.id}`} className="order-number-card">
+                      #{order.id}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            {/* PREPARING SECTION */}
+            <section className="display-split preparing">
+              <div className="split-header">
+                <span className="status-icon rotate">🔄</span> PREPARING
+              </div>
+              <div className="order-grid-compact">
                 {preparingOrders.length === 0 ? (
-                  <div className="display-empty">Kitchen is clear.</div>
+                  <div className="empty-msg">Kitchen Free</div>
                 ) : (
-                  <>
-                    {preparingOrders.map((order) => (
-                      <article key={`preparing-${order.id}`} className="display-order-card">
-                        <strong>{order.id}</strong>
-                        <div className="status-icon">👨‍🍳 COOKING</div>
-                      </article>
-                    ))}
-                    {/* Duplicate for seamless loop if many orders */}
-                    {preparingOrders.length > 6 && preparingOrders.map((order) => (
-                      <article key={`preparing-dup-${order.id}`} className="display-order-card" aria-hidden="true">
-                        <strong>{order.id}</strong>
-                        <div className="status-icon">👨‍🍳 COOKING</div>
-                      </article>
-                    ))}
-                  </>
+                  preparingOrders.map((order) => (
+                    <div key={`prep-${order.id}`} className="order-number-card">
+                      #{order.id}
+                    </div>
+                  ))
                 )}
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
+        )}
 
-          {/* READY SECTION */}
-          <section className="display-column completed">
-            <div className="display-column-header">
-              <h3>READY FOR PICKUP</h3>
-              <span className="count-badge">{completedOrders.length}</span>
-            </div>
-            <div className="display-marquee-container">
-              <div className={`display-order-row ${completedOrders.length > 6 ? 'animate-scroll' : ''}`}>
-                {completedOrders.length === 0 ? (
-                  <div className="display-empty">No orders ready yet.</div>
-                ) : (
-                  <>
-                    {completedOrders.map((order) => (
-                      <article key={`completed-${order.id}`} className="display-order-card">
-                        <strong>{order.id}</strong>
-                        <div className="status-icon">✅ READY</div>
-                      </article>
-                    ))}
-                    {/* Duplicate for seamless loop if many orders */}
-                    {completedOrders.length > 6 && completedOrders.map((order) => (
-                      <article key={`completed-dup-${order.id}`} className="display-order-card" aria-hidden="true">
-                        <strong>{order.id}</strong>
-                        <div className="status-icon">✅ READY</div>
-                      </article>
-                    ))}
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
+        <footer className="display-footer no-print">
+          <button onClick={handleFullscreen} className="fullscreen-btn">
+             Toggle Fullscreen Mode
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }
