@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import './AdminDisplayBoardPage.css';
 
 const REFRESH_INTERVAL_MS = 10000;
-const MAX_CARDS_PER_COLUMN = 12;
+// We'll fetch more but the CSS will handle the "rotation" view
+const MAX_ORDERS_TO_FETCH = 30; 
 
 function AdminDisplayBoardPage({ kiosk = false }) {
   const [orders, setOrders] = useState([]);
@@ -57,15 +58,15 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     () => orders
       .filter((o) => (o.status || '').toLowerCase() === 'preparing')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, MAX_CARDS_PER_COLUMN),
+      .slice(0, MAX_ORDERS_TO_FETCH),
     [orders]
   );
 
   const completedOrders = useMemo(
     () => orders
-      .filter((o) => (o.status || '').toLowerCase() === 'completed')
+      .filter((o) => (o.status || '').toLowerCase() === 'completed' || (o.status || '').toLowerCase() === 'ready')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, MAX_CARDS_PER_COLUMN),
+      .slice(0, MAX_ORDERS_TO_FETCH),
     [orders]
   );
 
@@ -103,41 +104,65 @@ function AdminDisplayBoardPage({ kiosk = false }) {
         <div className="loader">INITIALIZING SYSTEM...</div>
       ) : (
         <div className="display-columns">
+          {/* PREPARING SECTION */}
           <section className="display-column preparing">
             <div className="display-column-header">
               <h3>IN PREPARATION</h3>
-              <span>{preparingOrders.length}</span>
+              <span className="count-badge">{preparingOrders.length}</span>
             </div>
-            <div className="display-order-list">
-              {preparingOrders.length === 0 ? (
-                <div className="display-empty">Kitchen is clear.</div>
-              ) : (
-                preparingOrders.map((order) => (
-                  <article key={`preparing-${order.id}`} className="display-order-card">
-                    <strong>{order.id}</strong>
-                    <div className="status-icon">👨‍🍳 COOKING</div>
-                  </article>
-                ))
-              )}
+            <div className="display-marquee-container">
+              <div className={`display-order-row ${preparingOrders.length > 6 ? 'animate-scroll' : ''}`}>
+                {preparingOrders.length === 0 ? (
+                  <div className="display-empty">Kitchen is clear.</div>
+                ) : (
+                  <>
+                    {preparingOrders.map((order) => (
+                      <article key={`preparing-${order.id}`} className="display-order-card">
+                        <strong>{order.id}</strong>
+                        <div className="status-icon">👨‍🍳 COOKING</div>
+                      </article>
+                    ))}
+                    {/* Duplicate for seamless loop if many orders */}
+                    {preparingOrders.length > 6 && preparingOrders.map((order) => (
+                      <article key={`preparing-dup-${order.id}`} className="display-order-card" aria-hidden="true">
+                        <strong>{order.id}</strong>
+                        <div className="status-icon">👨‍🍳 COOKING</div>
+                      </article>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
           </section>
 
+          {/* READY SECTION */}
           <section className="display-column completed">
             <div className="display-column-header">
               <h3>READY FOR PICKUP</h3>
-              <span>{completedOrders.length}</span>
+              <span className="count-badge">{completedOrders.length}</span>
             </div>
-            <div className="display-order-list">
-              {completedOrders.length === 0 ? (
-                <div className="display-empty">No orders ready yet.</div>
-              ) : (
-                completedOrders.map((order) => (
-                  <article key={`completed-${order.id}`} className="display-order-card">
-                    <strong>{order.id}</strong>
-                    <div className="status-icon">✅ READY</div>
-                  </article>
-                ))
-              )}
+            <div className="display-marquee-container">
+              <div className={`display-order-row ${completedOrders.length > 6 ? 'animate-scroll' : ''}`}>
+                {completedOrders.length === 0 ? (
+                  <div className="display-empty">No orders ready yet.</div>
+                ) : (
+                  <>
+                    {completedOrders.map((order) => (
+                      <article key={`completed-${order.id}`} className="display-order-card">
+                        <strong>{order.id}</strong>
+                        <div className="status-icon">✅ READY</div>
+                      </article>
+                    ))}
+                    {/* Duplicate for seamless loop if many orders */}
+                    {completedOrders.length > 6 && completedOrders.map((order) => (
+                      <article key={`completed-dup-${order.id}`} className="display-order-card" aria-hidden="true">
+                        <strong>{order.id}</strong>
+                        <div className="status-icon">✅ READY</div>
+                      </article>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
           </section>
         </div>
