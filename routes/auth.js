@@ -48,29 +48,27 @@ module.exports = (config, db) => {
             return null;
         }
 
-        const host = process.env.SMTP_HOST;
-        const port = Number(process.env.SMTP_PORT || 465); // Try 465 by default
+        const host = process.env.SMTP_HOST || 'smtp.sendgrid.net';
+        const port = Number(process.env.SMTP_PORT || 587);
         const user = process.env.SMTP_USER;
         const pass = process.env.SMTP_PASS;
 
         if (!host || !user || !pass) {
-            console.error('[SMTP] Missing environment variables:', { 
-                host: !!host, 
-                user: !!user, 
-                pass: !!pass 
-            });
+            console.error('[SMTP] Missing environment variables');
             return null;
         }
-
-        console.log(`[SMTP] Initializing transporter for ${user} via ${host}:${port}`);
 
         return nodemailerLib.createTransport({
             host,
             port,
-            secure: port === 465, // Use true for 465, false for other ports
+            secure: port === 465,
             auth: { user, pass },
-            connectionTimeout: 10000, // 10 seconds timeout so it doesn't hang forever
-            greetingTimeout: 10000
+            // Add specialized settings for stability on Render
+            pool: true,
+            maxConnections: 1,
+            rateDelta: 20000,
+            rateLimit: 5,
+            connectionTimeout: 10000
         });
     };
 
