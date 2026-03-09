@@ -1,0 +1,56 @@
+<div class="admin-page-header">
+    <h2>Food Items</h2>
+    <button id="add-new-item-btn" class="button">Add New Item</button>
+</div>
+<div id="admin-menu-list" class="admin-list-container">
+    <!-- Menu items will be rendered here by admin.js -->
+    <div class="loader"></div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div id="menu-item-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-btn">&times;</span>
+        <h3 id="modal-title">Add New Item</h3>
+        <form id="menu-item-form">
+            <input type="hidden" id="edit-item-id">
+            <div class="input-group">
+                <label for="item-name">Name</label>
+                <input type="text" id="item-name" required>
+            </div>
+            <div class="input-group">
+                <label for="item-price">Selling Price (₹)</label>
+                <input type="number" id="item-price" step="0.01" required>
+            </div>
+            <div class="input-group">
+                <label for="item-cost-price">Cost Price (₹)</label>
+                <input type="number" id="item-cost-price" step="0.01" required>
+            </div>
+             <div class="input-group">
+                <label for="item-menu-type">Menu Category</label>
+                <select id="item-menu-type">
+                    <option value="REGULAR">Regular</option>
+                    <option value="ALL TIME FAVORITE">All Time Favorite</option>
+                    <option value="PIZZA">Pizza</option>
+                    <option value="FRIES/NUGGETS/MOMOS">Fries/Nuggets/Momos</option>
+                    <option value="HOT BEVERAGES/TEA">Beverages</option>
+                    <option value="CHINESE - DINNER">Chinese</option>
+                    <option value="TODAYS SPECIAL">Todays Special</option>
+                    <option value="LUNCH">Lunch</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="item-image">Image</label>
+                <input type="file" id="item-image" accept="image/*">
+                <img id="image-preview" src="#" alt="Image Preview" style="display: none; max-width: 100px; margin-top: 10px;"/>
+            </div>
+             <div class="input-group">
+                <label>
+                    <input type="checkbox" id="item-is-available" checked>
+                    Is Available
+                </label>
+            </div>
+            <button type="submit" id="save-item-btn" class="button">Save Item</button>
+        </form>
+    </div>
+</div>

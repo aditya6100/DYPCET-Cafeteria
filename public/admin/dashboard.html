@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - DYPCET Cafeteria</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/alerts.css">
+</head>
+<body class="admin-body">
+    <header class="admin-dashboard-header">
+        <a href="/index.html" class="header-logo-link">
+            <h1>Admin Dashboard</h1>
+        </a>
+        <div>
+            <span id="admin-welcome" class="welcome-message"></span>
+            <a href="/index.html" class="button button-outline">View Site</a>
+            <a href="#" id="admin-logout-btn" class="button">Logout</a>
+        </div>
+    </header>
+
+    <div class="admin-main-content">
+        <aside class="admin-sidebar">
+            <nav>
+                <ul>
+                    <li><a href="#orders">Orders</a></li>
+                    <li><a href="#menu">Food Items</a></li>
+                    <li><a href="#users">User Management</a></li>
+                    <li><a href="#feedback">Feedback</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main id="admin-content" class="admin-content-area">
+            <!-- Content will be loaded here by admin.js -->
+        </main>
+    </div>
+
+    <script src="/js/common.js"></script>
+    <script src="/js/admin.js"></script>
+    <script>
+        // Small script to handle logout and welcome message
+        document.addEventListener('DOMContentLoaded', () => {
+            const user = getUser();
+            if (user) {
+                document.getElementById('admin-welcome').textContent = `Welcome, ${user.name}!`;
+            }
+            document.getElementById('admin-logout-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                logout();
+            });
+        });
+    </script>
+</body>
+</html>

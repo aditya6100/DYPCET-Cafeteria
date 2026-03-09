@@ -1,0 +1,246 @@
+const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const asyncHandler = require('express-async-handler');
+const crypto = require('crypto');
+
+module.exports = (config, db) => {
+    const router = express.Router();
+
+    // Helper to generate JWT
+    const generateToken = (id, name, user_type) => {
+        return jwt.sign({ id, name, user_type }, config.jwt.secret, {
+            expiresIn: '1d',
+        });
+    };
+
+    const ensureResetColumns = async () => {
+        const columns = await db.query(
+            `SELECT COLUMN_NAME
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'users'`
+        );
+        const existing = new Set((columns || []).map((c) => c.COLUMN_NAME));
+
+        if (!existing.has('reset_password_token')) {
+            await db.query(`ALTER TABLE users ADD COLUMN reset_password_token VARCHAR(255) NULL`);
+        }
+        if (!existing.has('reset_password_expires')) {
+            await db.query(`ALTER TABLE users ADD COLUMN reset_password_expires DATETIME NULL`);
+        }
+    };
+
+    ensureResetColumns()
+        .then(() => {
+            console.log('Auth reset columns checked/ready.');
+        })
+        .catch((error) => {
+            console.error('Auth reset column setup failed:', error.message);
+        });
+
+    const getTransporter = () => {
+        let nodemailerLib = null;
+        try {
+            // Lazy-load so server still runs if nodemailer is missing/corrupted.
+            nodemailerLib = require('nodemailer');
+        } catch (error) {
+            return null;
+        }
+
+        const host = process.env.SMTP_HOST;
+        const port = Number(process.env.SMTP_PORT || 587);
+        const user = process.env.SMTP_USER;
+        const pass = process.env.SMTP_PASS;
+        const secure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+
+        if (!host || !user || !pass) return null;
+
+        return nodemailerLib.createTransport({
+            host,
+            port,
+            secure,
+            auth: { user, pass }
+        });
+    };
+
+    // @desc    Register a new user
+    // @route   POST /api/auth/register
+    // @access  Public
+    router.post('/register', asyncHandler(async (req, res) => {
+        const { name, email, password, user_type = 'student', mobile_no, address, student_id, faculty_id } = req.body;
+
+        if (!name || !email || !password || !user_type || !mobile_no) {
+            res.status(400);
+            throw new Error('Please provide name, email, password, user_type, and mobile_no.');
+        }
+
+        if (!/^\d{10}$/.test(mobile_no)) {
+            res.status(400);
+            throw new Error('Mobile number must be exactly 10 digits.');
+        }
+
+        const userExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        if (userExists.length > 0) {
+            res.status(409);
+            throw new Error('User with this email already exists.');
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const sql = 'INSERT INTO users (name, email, password, user_type, mobile_no, address, student_id, faculty_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+        const params = [name, email, hashedPassword, user_type, mobile_no, address || null, student_id || null, faculty_id || null];
+
+        const result = await db.query(sql, params);
+
+        if (result.insertId) {
+            res.status(201).json({
+                message: 'User registered successfully',
+                userId: result.insertId,
+            });
+        } else {
+            res.status(500);
+            throw new Error('Failed to register user.');
+        }
+    }));
+
+    // @desc    Authenticate user & get token (Login)
+    // @route   POST /api/auth/login
+    // @access  Public
+    router.post('/login', asyncHandler(async (req, res) => {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            res.status(400);
+            throw new Error('Please provide email and password.');
+        }
+
+        const users = await db.query('SELECT id, name, email, password, user_type FROM users WHERE email = ?', [email]);
+
+        if (users.length === 0) {
+            res.status(401);
+            throw new Error('Invalid email or password.');
+        }
+
+        const user = users[0];
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (isMatch) {
+            res.json({
+                _id: user.id,
+                name: user.name,
+                email: user.email,
+                user_type: user.user_type,
+                token: generateToken(user.id, user.name, user.user_type),
+            });
+        } else {
+            res.status(401);
+            throw new Error('Invalid email or password.');
+        }
+    }));
+
+    // @desc    Request password reset link
+    // @route   POST /api/auth/forgot-password
+    // @access  Public
+    router.post('/forgot-password', asyncHandler(async (req, res) => {
+        const { email } = req.body || {};
+
+        if (!email) {
+            res.status(400);
+            throw new Error('Email is required.');
+        }
+
+        const users = await db.query('SELECT id, email, name FROM users WHERE email = ? LIMIT 1', [email]);
+        const user = users[0];
+
+        // Always generic response to avoid email enumeration.
+        const genericMessage = 'If that email is registered, a password reset link has been sent.';
+
+        if (!user) {
+            return res.json({ message: genericMessage });
+        }
+
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+        await db.query(
+            `UPDATE users
+             SET reset_password_token = ?, reset_password_expires = ?
+             WHERE id = ?`,
+            [hashedToken, expiresAt, user.id]
+        );
+
+        const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const resetLink = `${frontendBase}/reset-password?token=${rawToken}`;
+
+        const transporter = getTransporter();
+        if (transporter) {
+            await transporter.sendMail({
+                from: process.env.SMTP_FROM || process.env.SMTP_USER,
+                to: user.email,
+                subject: 'DYPCET Cafeteria - Password Reset',
+                text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link will expire in 15 minutes.`,
+                html: `<p>Hello ${user.name || ''},</p>
+                       <p>Reset your password using this link:</p>
+                       <p><a href="${resetLink}">${resetLink}</a></p>
+                       <p>This link will expire in 15 minutes.</p>`
+            });
+        } else {
+            console.log('Password reset link (SMTP/nodemailer unavailable):', resetLink);
+        }
+
+        return res.json({ message: genericMessage });
+    }));
+
+    // @desc    Reset password using token
+    // @route   POST /api/auth/reset-password
+    // @access  Public
+    router.post('/reset-password', asyncHandler(async (req, res) => {
+        const { token, newPassword } = req.body || {};
+
+        if (!token || !newPassword) {
+            res.status(400);
+            throw new Error('Token and new password are required.');
+        }
+        if (String(newPassword).length < 6) {
+            res.status(400);
+            throw new Error('Password must be at least 6 characters long.');
+        }
+
+        const hashedToken = crypto.createHash('sha256').update(String(token)).digest('hex');
+
+        const users = await db.query(
+            `SELECT id
+             FROM users
+             WHERE reset_password_token = ?
+               AND reset_password_expires IS NOT NULL
+               AND reset_password_expires > NOW()
+             LIMIT 1`,
+            [hashedToken]
+        );
+        const user = users[0];
+
+        if (!user) {
+            res.status(400);
+            throw new Error('Reset link is invalid or expired.');
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(String(newPassword), salt);
+
+        await db.query(
+            `UPDATE users
+             SET password = ?,
+                 reset_password_token = NULL,
+                 reset_password_expires = NULL
+             WHERE id = ?`,
+            [hashedPassword, user.id]
+        );
+
+        return res.json({ message: 'Password reset successful. Please log in.' });
+    }));
+
+    return router;
+};

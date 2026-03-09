@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DYPCET Cafeteria</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/alerts.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <a href="/index.html" class="header-logo-link">
+                <img src="/assets/dyplogo.png" alt="DYPCET Logo" class="header-logo">
+                <h1>DYPCET Cafeteria</h1>
+            </a>
+        </div>
+        <div class="header-right">
+            <nav><ul><!-- Populated by JS --></ul></nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero-slideshow-container">
+            <div class="slide active" style="background-image: url('/assets/HomePage_Presentation/Slide1.png');"></div>
+            <div class="slide" style="background-image: url('/assets/HomePage_Presentation/Slide2.png');"></div>
+            <div class="slide" style="background-image: url('/assets/HomePage_Presentation/Slide3.png');"></div>
+            <div class="hero-overlay">
+                <div class="hero-text-content">
+                    <h1>Welcome to DYPCET Cafeteria</h1>
+                    <p>Delicious food, just a click away!</p>
+                    <a href="#menu-start" class="button hero-cta">Order Now</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="menu-start" class="menu-section container">
+            <h2>Our Menu</h2>
+            <div class="menu"><div class="loader">Loading Menu...</div></div>
+        </section>
+
+        <section class="about-cafeteria-section">
+             <div class="container">
+                <h2>About Our Cafeteria</h2>
+                <p class="about-description">
+                    At DYPCET Cafeteria, we are committed to providing delicious, hygienic, and affordable meals to our students and staff.
+                </p>
+             </div>
+        </section>
+    </main>
+
+    <footer><div class="container"><p>&copy; 2024 DYPCET Cafeteria.</p></div></footer>
+    <script src="/js/common.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html>

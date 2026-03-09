@@ -1,0 +1,32 @@
+<!-- cart.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Cart - DYPCET Cafeteria</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/alerts.css">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body class="cart-page">
+    <header>
+        <div class="header-left"><a href="/index.html" class="header-logo-link"><img src="/assets/dyplogo.png" alt="DYPCET Logo" class="header-logo"><h1>DYPCET Cafeteria</h1></a></div>
+        <div class="header-right"><nav><ul></ul></nav></div>
+    </header>
+    <main class="container">
+        <h2>Your Cart</h2>
+        <div id="cart-container"><div class="loader">Loading Cart...</div></div>
+        <div id="cart-summary" style="display: none;">
+            <h3>Order Summary</h3>
+            <div class="summary-row"><span>Subtotal</span><span id="cart-subtotal">₹0.00</span></div>
+            <div class="summary-row"><span>Taxes & Charges (5%)</span><span id="cart-taxes">₹0.00</span></div>
+            <div class="summary-row total"><span>Total</span><span id="cart-total">₹0.00</span></div>
+            <button id="checkout-btn" class="button">Proceed to Payment</button>
+        </div>
+    </main>
+    <footer><div class="container"><p>&copy; 2024 DYPCET Cafeteria.</p></div></footer>
+    <script src="/js/common.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html>

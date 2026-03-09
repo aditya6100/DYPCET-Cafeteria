@@ -1,0 +1,38 @@
+<div class="admin-page-header">
+    <h2>User Management</h2>
+    <p>View, edit, or remove user accounts.</p>
+</div>
+<div id="admin-users-list" class="admin-list-container">
+    <!-- Users will be rendered here by admin.js -->
+    <div class="loader"></div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="user-edit-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-btn">&times;</span>
+        <h3>Edit User</h3>
+        <form id="user-edit-form">
+            <input type="hidden" id="edit-user-id">
+            <div class="input-group">
+                <label for="user-name">Full Name</label>
+                <input type="text" id="user-name" required>
+            </div>
+            <div class="input-group">
+                <label for="user-email">Email</label>
+                <input type="email" id="user-email" required>
+            </div>
+            <div class="input-group">
+                <label for="user-type">User Type</label>
+                <select id="user-type" required>
+                    <option value="student">Student</option>
+                    <option value="faculty">Faculty</option>
+                    <option value="visitor">Visitor</option>
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <button type="submit" class="button">Save Changes</button>
+        </form>
+    </div>
+</div>

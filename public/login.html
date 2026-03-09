@@ -1,0 +1,41 @@
+<!-- login.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - DYPCET Cafeteria</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/alerts.css">
+</head>
+<body class="auth-page">
+    <header>
+        <div class="header-left">
+            <a href="/index.html" class="header-logo-link">
+                <img src="/assets/dyplogo.png" alt="DYPCET Logo" class="header-logo">
+                <h1>DYPCET Cafeteria</h1>
+            </a>
+        </div>
+        <div class="header-right"><nav><ul></ul></nav></div>
+    </header>
+    <main class="container">
+        <div class="auth-card">
+            <h2>Login</h2>
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="button">Login</button>
+            </form>
+            <p>Don't have an account? <a href="/register.html">Register here</a>.</p>
+        </div>
+    </main>
+    <script src="/js/common.js"></script>
+    <script src="/js/auth.js"></script>
+</body>
+</html>

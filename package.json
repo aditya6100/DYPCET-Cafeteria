@@ -1,0 +1,31 @@
+{
+  "name": "dypcet-cafeteria",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-async-handler": "^1.2.0",
+    "formidable": "^3.5.4",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
+    "mysql": "^2.18.1",
+    "nodemailer": "^8.0.1",
+    "pg-sdk-node": "https://phonepe.mycloudrepo.io/public/repositories/phonepe-pg-sdk-node/releases/v2/phonepe-pg-sdk-node-2.0.3.tgz",
+    "razorpay": "^2.9.6"
+  },
+  "devDependencies": {
+    "kill-port": "^2.0.1"
+  }
+}
