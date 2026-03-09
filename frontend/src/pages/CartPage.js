@@ -39,7 +39,6 @@ function CartPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [orderInstruction, setOrderInstruction] = useState('');
 
-  const taxes = 0;
   const totalAmountWithTaxes = cartTotal;
 
   useEffect(() => {
