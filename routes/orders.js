@@ -171,7 +171,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             { column: 'refund_processed_at', sql: "ALTER TABLE orders ADD COLUMN refund_processed_at DATETIME NULL" },
             { column: 'refund_processed_by', sql: "ALTER TABLE orders ADD COLUMN refund_processed_by INT NULL" },
             { column: 'refund_last_action', sql: "ALTER TABLE orders ADD COLUMN refund_last_action VARCHAR(30) NULL" },
-            { column: 'order_instruction', sql: "ALTER TABLE orders ADD COLUMN order_instruction TEXT NULL" }
+            { column: 'order_instruction', sql: "ALTER TABLE orders ADD COLUMN order_instruction TEXT NULL" },
+            { column: 'token_number', sql: "ALTER TABLE orders ADD COLUMN token_number INT NULL" }
         ];
 
         for (const migration of migrations) {
@@ -180,6 +181,18 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 await db.query(migration.sql);
             }
         }
+
+        // Backfill existing orders if token_number is null (optional, but good for display)
+        await db.query(`
+            UPDATE orders o
+            SET token_number = (
+                SELECT COUNT(*)
+                FROM (SELECT id, timestamp FROM orders) as o2
+                WHERE DATE(o2.timestamp) = DATE(o.timestamp)
+                  AND o2.id <= o.id
+            )
+            WHERE token_number IS NULL
+        `);
 
         await db.query(
             `UPDATE orders
@@ -393,13 +406,19 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             throw new Error("Payment verification failed: Invalid signature.");
         }
 
-        // 2. Save the order using the CORRECT column names from the user's schema
-        const sql = "INSERT INTO orders (user_id, items, total, status, payment_id, transaction_id, order_instruction) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        // 2. Calculate daily token number
+        const tokenResult = await db.query(
+            "SELECT COUNT(*) as count FROM orders WHERE DATE(timestamp) = CURDATE()"
+        );
+        const dailyToken = (tokenResult[0]?.count || 0) + 1;
+
+        // 3. Save the order using the CORRECT column names from the user's schema
+        const sql = "INSERT INTO orders (user_id, items, total, status, payment_id, transaction_id, order_instruction, token_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         const itemsJson = JSON.stringify(items);
         const safeInstruction = typeof order_instruction === 'string'
             ? order_instruction.trim().slice(0, 500)
             : null;
-        const params = [userId, itemsJson, total_amount, 'Received', razorpay_payment_id, razorpay_order_id, safeInstruction || null];
+        const params = [userId, itemsJson, total_amount, 'Received', razorpay_payment_id, razorpay_order_id, safeInstruction || null, dailyToken];
 
         try {
             const result = await db.query(sql, params);
@@ -605,9 +624,16 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
 
         const items = JSON.parse(session.items_json || '[]');
+        
+        // Calculate daily token number
+        const tokenResult = await db.query(
+            "SELECT COUNT(*) as count FROM orders WHERE DATE(timestamp) = CURDATE()"
+        );
+        const dailyToken = (tokenResult[0]?.count || 0) + 1;
+
         const insertResult = await db.query(
-            `INSERT INTO orders (user_id, items, total, status, payment_id, transaction_id, payment_status)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO orders (user_id, items, total, status, payment_id, transaction_id, payment_status, token_number)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 req.user.id,
                 JSON.stringify(items),
@@ -615,7 +641,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 'Received',
                 statusData?.transactionId || statusData?.data?.transactionId || null,
                 merchantOrderId,
-                'Paid'
+                'Paid',
+                dailyToken
             ]
         );
 
