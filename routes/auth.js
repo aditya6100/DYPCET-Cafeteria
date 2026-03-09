@@ -49,7 +49,7 @@ module.exports = (config, db) => {
         }
 
         const host = process.env.SMTP_HOST;
-        const port = Number(process.env.SMTP_PORT || 587);
+        const port = Number(process.env.SMTP_PORT || 465); // Try 465 by default
         const user = process.env.SMTP_USER;
         const pass = process.env.SMTP_PASS;
 
@@ -62,13 +62,15 @@ module.exports = (config, db) => {
             return null;
         }
 
-        console.log(`[SMTP] Initializing transporter for ${user} via ${host}`);
+        console.log(`[SMTP] Initializing transporter for ${user} via ${host}:${port}`);
 
         return nodemailerLib.createTransport({
             host,
             port,
-            secure: String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true',
-            auth: { user, pass }
+            secure: port === 465, // Use true for 465, false for other ports
+            auth: { user, pass },
+            connectionTimeout: 10000, // 10 seconds timeout so it doesn't hang forever
+            greetingTimeout: 10000
         });
     };
 
