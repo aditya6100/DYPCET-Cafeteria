@@ -8,7 +8,6 @@ function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [debugLink, setDebugLink] = useState('');
   const { showAlert } = useAlert();
 
   const handleSubmit = async (e) => {
@@ -23,9 +22,6 @@ function ForgotPasswordPage() {
       setLoading(true);
       const result = await apiRequest('/auth/forgot-password', 'POST', { email: normalizedEmail });
       showAlert(result?.message || 'If that email is registered, a reset link has been sent.', 'success');
-      if (result?._debug_link) {
-        setDebugLink(result._debug_link);
-      }
       setSubmitted(true);
     } catch (error) {
       showAlert(error.message, 'error');
@@ -75,28 +71,6 @@ function ForgotPasswordPage() {
                 If <strong>{email}</strong> is registered, you will receive a password reset email shortly.
               </p>
 
-              {debugLink && (
-                <div style={{ 
-                  margin: '20px 0', 
-                  padding: '15px', 
-                  background: '#fff3e0', 
-                  border: '1px solid #ffe0b2', 
-                  borderRadius: '8px', 
-                  fontSize: '0.9rem',
-                  textAlign: 'left' 
-                }}>
-                  <p style={{ color: '#e65100', marginBottom: '8px', fontWeight: 'bold' }}>
-                    ⚠️ Server SMTP Blocked
-                  </p>
-                  <p style={{ color: '#666', marginBottom: '10px' }}>
-                    Since your hosting provider is blocking the email, you can use this link directly to test the reset process:
-                  </p>
-                  <a href={debugLink} className="auth-link" style={{ wordBreak: 'break-all', display: 'block', color: '#0A2342' }}>
-                    {debugLink}
-                  </a>
-                </div>
-              )}
-
               <div className="forgot-tips">
                 <p><strong>Didn't receive email?</strong></p>
                 <ul>
@@ -105,7 +79,7 @@ function ForgotPasswordPage() {
                   <li>Verify the email address and resend</li>
                 </ul>
               </div>
-              <button type="button" className="auth-submit-btn" onClick={() => { setSubmitted(false); setDebugLink(''); }}>
+              <button type="button" className="auth-submit-btn" onClick={() => { setSubmitted(false); }}>
                 Try Another Email
               </button>
             </div>

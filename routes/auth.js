@@ -260,11 +260,9 @@ module.exports = (config, db) => {
         }
 
         // IMPROVED FREE FALLBACK: 
-        // If the email doesn't arrive, the response now includes the link for the admin to see in the logs,
-        // OR we can even show it on the screen temporarily for debugging if you are the owner.
+        // We removed the _debug_link from the JSON response for security.
         return res.json({ 
-            message: genericMessage,
-            _debug_link: resetLink // This will help you test it even if the mail fails!
+            message: genericMessage
         });
     }));
 
