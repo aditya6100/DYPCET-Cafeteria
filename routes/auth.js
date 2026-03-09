@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const crypto = require('crypto');
+const https = require('https');
 
 module.exports = (config, db) => {
     const router = express.Router();
@@ -22,7 +23,6 @@ module.exports = (config, db) => {
                AND TABLE_NAME = 'users'`
         );
         const existing = new Set((columns || []).map((c) => c.COLUMN_NAME));
-
         if (!existing.has('reset_password_token')) {
             await db.query(`ALTER TABLE users ADD COLUMN reset_password_token VARCHAR(255) NULL`);
         }
@@ -32,86 +32,88 @@ module.exports = (config, db) => {
     };
 
     ensureResetColumns()
-        .then(() => {
-            console.log('Auth reset columns checked/ready.');
-        })
-        .catch((error) => {
-            console.error('Auth reset column setup failed:', error.message);
-        });
+        .then(() => console.log('Auth reset columns checked/ready.'))
+        .catch((error) => console.error('Auth reset column setup failed:', error.message));
 
-    const getTransporter = () => {
-        let nodemailerLib = null;
-        try {
-            nodemailerLib = require('nodemailer');
-        } catch (error) {
-            console.error('[SMTP] Nodemailer module not found!');
-            return null;
-        }
+    // ─── Send email via Brevo HTTP API (works on Render free tier) ───
+    const sendEmailViaBrevo = (toEmail, toName, subject, htmlContent, textContent) => {
+        return new Promise((resolve, reject) => {
+            const apiKey = process.env.BREVO_API_KEY;
+            if (!apiKey) {
+                return reject(new Error('BREVO_API_KEY environment variable is not set'));
+            }
 
-        const host = process.env.SMTP_HOST;
-        const port = Number(process.env.SMTP_PORT || 587);
-        const user = process.env.SMTP_USER;
-        const pass = process.env.SMTP_PASS;
+            const payload = JSON.stringify({
+                sender: {
+                    name: 'DYPCET Cafeteria Support',
+                    email: 'mahalaxmicanteen.dypcet@gmail.com'
+                },
+                to: [{ email: toEmail, name: toName || toEmail }],
+                subject: subject,
+                htmlContent: htmlContent,
+                textContent: textContent
+            });
 
-        console.log(`[SMTP] Initializing transporter → host: ${host}, port: ${port}, user: ${user}, pass: ${pass ? 'SET' : 'MISSING'}`);
+            const options = {
+                hostname: 'api.brevo.com',
+                path: '/v3/smtp/email',
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': apiKey,
+                    'content-type': 'application/json',
+                    'content-length': Buffer.byteLength(payload)
+                }
+            };
 
-        if (!host || !user || !pass) {
-            console.error('[SMTP] Missing one or more environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS)');
-            return null;
-        }
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        console.log(`[BREVO] Email sent successfully to ${toEmail}`);
+                        resolve({ messageId: JSON.parse(data).messageId });
+                    } else {
+                        console.error(`[BREVO] API error ${res.statusCode}: ${data}`);
+                        reject(new Error(`Brevo API error: ${res.statusCode} - ${data}`));
+                    }
+                });
+            });
 
-        return nodemailerLib.createTransport({
-            host,
-            port,
-            secure: false, // false for port 587 (STARTTLS)
-            auth: { user, pass },
-            tls: {
-                rejectUnauthorized: false,
-                ciphers: 'SSLv3'
-            },
-            connectionTimeout: 30000,
-            greetingTimeout: 20000,
-            socketTimeout: 30000,
-            debug: true,
-            logger: true
+            req.on('error', (err) => {
+                console.error(`[BREVO] Request error: ${err.message}`);
+                reject(err);
+            });
+
+            req.write(payload);
+            req.end();
         });
     };
 
-    // @desc    Debug SMTP Connection
+    // @desc    Debug Email Connection
     // @route   GET /api/auth/debug-smtp
     router.get('/debug-smtp', asyncHandler(async (req, res) => {
         const testEmail = req.query.email || 'test@example.com';
-        const transporter = getTransporter();
+        const apiKey = process.env.BREVO_API_KEY;
 
-        if (!transporter) {
+        if (!apiKey) {
             return res.json({
                 status: 'FAILED',
-                reason: 'Transporter could not be initialized. Check environment variables.',
-                vars: {
-                    host: process.env.SMTP_HOST || 'NOT SET',
-                    port: process.env.SMTP_PORT || 'NOT SET',
-                    user: process.env.SMTP_USER || 'NOT SET',
-                    pass: process.env.SMTP_PASS ? 'SET' : 'MISSING'
-                }
+                reason: 'BREVO_API_KEY is not set in environment variables'
             });
         }
 
         try {
-            await transporter.verify();
-            const info = await transporter.sendMail({
-                from: `"DYPCET Cafeteria" <${process.env.SMTP_USER}>`,
-                to: testEmail,
-                subject: 'SMTP DEBUG TEST - DYPCET Cafeteria',
-                text: 'If you see this, SMTP is working perfectly on Render!'
-            });
-            res.json({ status: 'SUCCESS', messageId: info.messageId, recipient: testEmail });
+            await sendEmailViaBrevo(
+                testEmail,
+                'Test User',
+                'SMTP DEBUG TEST - DYPCET Cafeteria',
+                '<p>If you see this, <strong>Brevo HTTP API is working perfectly on Render!</strong></p>',
+                'If you see this, Brevo HTTP API is working perfectly on Render!'
+            );
+            res.json({ status: 'SUCCESS', recipient: testEmail });
         } catch (err) {
-            res.status(500).json({
-                status: 'ERROR',
-                message: err.message,
-                code: err.code,
-                command: err.command
-            });
+            res.status(500).json({ status: 'ERROR', message: err.message });
         }
     }));
 
@@ -235,28 +237,19 @@ module.exports = (config, db) => {
         const resetLink = `${frontendBase}/reset-password?token=${rawToken}`;
         console.log(`[AUTH] Reset link generated for ${user.email}: ${resetLink}`);
 
-        const transporter = getTransporter();
-
-        if (!transporter) {
-            console.error('[AUTH] No transporter available — email not sent.');
-            return res.json({ message: genericMessage });
-        }
-
         try {
-            const info = await transporter.sendMail({
-                from: `"DYPCET Cafeteria Support" <${process.env.SMTP_USER}>`,
-                to: user.email,
-                subject: 'Password Reset - DYPCET Cafeteria',
-                text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link expires in 15 minutes.\n\nIf you did not request this, ignore this email.`,
-                html: `
-                <div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 30px; border: 1px solid #eee; border-radius: 10px;">
+            await sendEmailViaBrevo(
+                user.email,
+                user.name || '',
+                'Password Reset - DYPCET Cafeteria',
+                `<div style="font-family: sans-serif; max-width: 500px; margin: auto; padding: 30px; border: 1px solid #eee; border-radius: 10px;">
                     <div style="text-align:center; margin-bottom: 20px;">
                         <h2 style="color: #0A2342; margin:0;">🍽️ DYPCET Cafeteria</h2>
                         <p style="color:#888; font-size:0.85rem;">Mahalaxmi Canteen Management System</p>
                     </div>
                     <h3 style="color: #333;">Password Reset Request</h3>
                     <p>Hello <strong>${user.name || ''}</strong>,</p>
-                    <p>We received a request to reset your password. Click the button below to proceed:</p>
+                    <p>We received a request to reset your password. Click the button below:</p>
                     <div style="text-align: center; margin: 30px 0;">
                         <a href="${resetLink}"
                            style="background-color: #F47F20; color: white; padding: 14px 30px;
@@ -265,15 +258,15 @@ module.exports = (config, db) => {
                             Reset My Password
                         </a>
                     </div>
-                    <p style="font-size:0.85rem; color:#666;">Or copy this link into your browser:</p>
+                    <p style="font-size:0.85rem; color:#666;">Or copy this link:</p>
                     <p style="word-break: break-all; font-size:0.8rem; color: #999;">${resetLink}</p>
                     <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
                     <p style="font-size: 0.75rem; color: #aaa; text-align:center;">
-                        This link expires in <strong>15 minutes</strong>. If you did not request a reset, ignore this email.
+                        This link expires in <strong>15 minutes</strong>.
                     </p>
-                </div>`
-            });
-            console.log(`[AUTH] Reset email sent successfully to ${user.email} — MessageId: ${info.messageId}`);
+                </div>`,
+                `Hello ${user.name || ''},\n\nReset your password:\n${resetLink}\n\nExpires in 15 minutes.`
+            );
         } catch (emailErr) {
             console.error(`[AUTH] Failed to send reset email: ${emailErr.message}`);
         }
