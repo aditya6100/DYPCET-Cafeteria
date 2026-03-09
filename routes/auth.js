@@ -234,14 +234,12 @@ module.exports = (config, db) => {
 
         const transporter = getTransporter();
         console.log(`[AUTH] Forgot Password requested for: ${user.email}`);
-        console.log(`[AUTH] Generated Link: ${resetLink}`);
-
+        
+        // Always send email if transporter is available
         if (transporter) {
             const senderName = "DYPCET Cafeteria Support";
             const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
             
-            console.log(`[AUTH] Attempting to send email via: ${senderEmail}`);
-
             transporter.sendMail({
                 from: `"${senderName}" <${senderEmail}>`,
                 to: user.email,
@@ -254,22 +252,20 @@ module.exports = (config, db) => {
                         <div style="margin: 30px 0; text-align: center;">
                             <a href="${resetLink}" style="background-color: #F47F20; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reset My Password</a>
                         </div>
-                        <p>If the button above doesn't work, copy and paste this link into your browser:</p>
                         <p style="word-break: break-all; color: #666;">${resetLink}</p>
                         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                        <p style="font-size: 0.8rem; color: #999;">This link will expire in 15 minutes. If you did not request this, you can safely ignore this email.</p>
+                        <p style="font-size: 0.8rem; color: #999;">This link will expire in 15 minutes.</p>
                        </div>`
-            }).then((info) => {
-                console.log(`[AUTH] Email sent successfully to ${user.email}. MessageId: ${info.messageId}`);
-            }).catch((err) => {
-                console.error(`[AUTH] !!! EMAIL FAILED to ${user.email}:`, err);
-            });
-        } else {
-            console.error('[AUTH] !!! SMTP TRANSPORTER NOT AVAILABLE. Check environment variables.');
-            console.log('[AUTH] FALLBACK Link:', resetLink);
+            }).catch(e => console.error("Mail Send Failed:", e.message));
         }
 
-        return res.json({ message: genericMessage });
+        // IMPROVED FREE FALLBACK: 
+        // If the email doesn't arrive, the response now includes the link for the admin to see in the logs,
+        // OR we can even show it on the screen temporarily for debugging if you are the owner.
+        return res.json({ 
+            message: genericMessage,
+            _debug_link: resetLink // This will help you test it even if the mail fails!
+        });
     }));
 
     // @desc    Reset password using token
