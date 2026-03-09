@@ -163,76 +163,78 @@ function AdminOrdersPage() {
   };
 
   const handlePrint = (order) => {
+    // 1. Prepare items
     const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
-    const printWindow = window.open('', '_blank');
+    
+    // 2. Open a new window with a specific size (like a kitchen slip)
+    const printWindow = window.open('', '_blank', 'width=450,height=600');
+    
+    // 3. Define the HTML for the cook's slip
     const content = `
       <html>
         <head>
-          <title>Order #${order.id} - DYPCET Cafeteria</title>
+          <title>KITCHEN SLIP - Order #${order.id}</title>
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #333; }
-            .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
-            .order-info { margin-bottom: 20px; display: flex; justify-content: space-between; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-            th { background-color: #f8f9fa; }
-            .total { text-align: right; font-size: 1.2em; font-weight: bold; margin-top: 10px; }
-            .instruction { background: #fdf6e3; padding: 10px; border-left: 4px solid #b58900; margin: 15px 0; font-style: italic; }
-            .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; border-top: 1px solid #eee; padding-top: 10px; }
+            body { font-family: 'Courier New', Courier, monospace; padding: 15px; color: #000; }
+            .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 15px; }
+            .order-id { font-size: 28px; font-weight: bold; margin: 5px 0; }
+            .order-time { font-size: 14px; margin-bottom: 5px; }
+            .items-container { margin-top: 15px; }
+            .item-row { font-size: 20px; border-bottom: 1px solid #eee; padding: 10px 0; display: flex; align-items: center; }
+            .item-qty { font-size: 24px; font-weight: bold; border: 2px solid #000; padding: 2px 10px; margin-right: 15px; min-width: 30px; text-align: center; }
+            .item-name { flex-grow: 1; }
+            .instruction-box { background: #f2f2f2; padding: 12px; margin-top: 20px; border: 1px solid #999; border-radius: 4px; }
+            .instruction-title { font-weight: bold; font-size: 16px; margin-bottom: 5px; text-decoration: underline; }
+            .instruction-text { font-size: 18px; font-style: italic; color: #d32f2f; }
+            .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px dashed #000; padding-top: 10px; color: #666; }
             @media print {
+              @page { margin: 0; size: auto; }
+              body { margin: 1cm; width: 100%; }
               .no-print { display: none; }
-              body { padding: 0; }
             }
           </style>
         </head>
         <body>
           <div class="header">
-            <h2>DYPCET Cafeteria</h2>
-            <p>Order Receipt</p>
+            <div style="font-size: 14px; letter-spacing: 2px;">*** KITCHEN SLIP ***</div>
+            <div class="order-id">#${order.id}</div>
+            <div class="order-time">${new Date(order.timestamp).toLocaleString()}</div>
+            <div style="font-size: 14px; margin-top: 5px;">Customer: ${order.user_name || 'N/A'}</div>
           </div>
-          <div class="order-info">
-            <div>
-              <strong>Order ID:</strong> #${order.id}<br>
-              <strong>Date:</strong> ${new Date(order.timestamp).toLocaleString()}<br>
-              <strong>Status:</strong> ${order.status}
-            </div>
-            <div style="text-align: right;">
-              <strong>Customer:</strong> ${order.user_name || 'N/A'}<br>
-              <strong>Email:</strong> ${order.user_email || 'N/A'}
-            </div>
+          
+          <div class="items-container">
+            ${items.map(item => `
+              <div class="item-row">
+                <span class="item-qty">${item.quantity}</span>
+                <span class="item-name">${item.name}</span>
+              </div>
+            `).join('')}
           </div>
-          ${order.order_instruction ? `<div class="instruction"><strong>Instruction:</strong> ${order.order_instruction}</div>` : ''}
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items.map(item => `
-                <tr>
-                  <td>${item.name}</td>
-                  <td>${item.quantity}</td>
-                  <td>₹${(item.price || 0).toFixed(2)}</td>
-                  <td>₹${((item.price || 0) * item.quantity).toFixed(2)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="total">Grand Total: ₹${(order.total_amount || 0).toFixed(2)}</div>
+
+          ${order.order_instruction ? `
+            <div class="instruction-box">
+              <div class="instruction-title">SPECIAL INSTRUCTIONS:</div>
+              <div class="instruction-text">${order.order_instruction}</div>
+            </div>
+          ` : ''}
+
           <div class="footer">
-            <p>Thank you for your order!</p>
-            <p>DYPCET Cafeteria Management System</p>
+            DYPCET Cafeteria Management System<br>
+            - Thank you -
           </div>
+
           <script>
-            window.onload = function() { window.print(); window.close(); };
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+                // Window stays open for review; can be closed manually.
+              }, 500);
+            };
           </script>
         </body>
       </html>
     `;
+
     printWindow.document.write(content);
     printWindow.document.close();
   };
