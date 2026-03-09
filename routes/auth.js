@@ -177,12 +177,13 @@ module.exports = (config, db) => {
 
         const transporter = getTransporter();
         if (transporter) {
-            // We do NOT await here to prevent the request from hanging if SMTP is slow/broken.
-            // Or we can use a try-catch without blocking the response.
+            const senderName = "DYPCET Cafeteria Support";
+            const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+            
             transporter.sendMail({
-                from: process.env.SMTP_FROM || process.env.SMTP_USER,
+                from: `"${senderName}" <${senderEmail}>`,
                 to: user.email,
-                subject: 'DYPCET Cafeteria - Password Reset',
+                subject: 'Password Reset - DYPCET Cafeteria',
                 text: `Hello ${user.name || ''},\n\nReset your password using this link:\n${resetLink}\n\nThis link will expire in 15 minutes.`,
                 html: `<p>Hello ${user.name || ''},</p>
                        <p>Reset your password using this link:</p>
