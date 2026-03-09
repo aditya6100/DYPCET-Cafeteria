@@ -58,7 +58,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     () => orders
       .filter((o) => (o.status || '').toLowerCase() === 'preparing')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, MAX_ORDERS_TO_FETCH),
+      .slice(0, 10),
     [orders]
   );
 
@@ -66,7 +66,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     () => orders
       .filter((o) => (o.status || '').toLowerCase() === 'completed' || (o.status || '').toLowerCase() === 'ready')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, MAX_ORDERS_TO_FETCH),
+      .slice(0, 10),
     [orders]
   );
 
