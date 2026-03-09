@@ -172,7 +172,19 @@ module.exports = (config, db) => {
             [hashedToken, expiresAt, user.id]
         );
 
-        const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+        // Dynamically determine the frontend base URL from the request headers if available, 
+        // otherwise fall back to the environment variable.
+        let frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const origin = req.get('origin') || req.get('referer');
+        if (origin) {
+            try {
+                const url = new URL(origin);
+                frontendBase = `${url.protocol}//${url.host}`;
+            } catch (err) {
+                // Ignore invalid URLs and keep the fallback
+            }
+        }
+        
         const resetLink = `${frontendBase}/reset-password?token=${rawToken}`;
 
         const transporter = getTransporter();
