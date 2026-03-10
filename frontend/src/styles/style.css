@@ -154,13 +154,14 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
 .hero-slideshow-container {
     position: relative;
     width: min(1240px, calc(100% - 2rem));
-    height: clamp(300px, 40vw, 520px);
+    aspect-ratio: 16 / 9;
+    height: auto;
     margin: 1rem auto 1rem;
     border-radius: 10px;
     border: none;
     box-shadow: 0 28px 48px rgba(1, 11, 35, 0.45);
     overflow: hidden;
-    background: #030b1a;
+    background: #000000;
 }
 
 .canteen-intro-band {
