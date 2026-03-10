@@ -158,47 +158,49 @@ function CartPage() {
             <Link to="/menu-items" className="button">Browse Menu</Link>
           </div>
         ) : (
-          <table className="admin-table cart-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Price</th>
-                <th>Qty</th>
-                <th>Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cart.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>INR {(item.price || 0).toFixed(2)}</td>
-                  <td>
-                    <div className="qty-stepper">
-                      <button type="button" className="button-small" onClick={() => changeQuantityBy(item, -1)}>-</button>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        min="1"
-                        onChange={(e) => updateItemQuantity(item.id, Math.max(1, parseInt(e.target.value || '1', 10)))}
-                      />
-                      <button type="button" className="button-small" onClick={() => changeQuantityBy(item, 1)}>+</button>
-                    </div>
-                  </td>
-                  <td>INR {((item.price || 0) * item.quantity).toFixed(2)}</td>
-                  <td>
-                    <button
-                      className="remove-btn button-small danger-btn"
-                      type="button"
-                      onClick={() => removeFromCart(item.id)}
-                    >
-                      Remove
-                    </button>
-                  </td>
+          <div className="responsive-table-wrapper">
+            <table className="admin-table cart-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Price</th>
+                  <th>Qty</th>
+                  <th>Total</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {cart.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.name}</td>
+                    <td>INR {(item.price || 0).toFixed(2)}</td>
+                    <td>
+                      <div className="qty-stepper">
+                        <button type="button" className="button-small" onClick={() => changeQuantityBy(item, -1)}>-</button>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          min="1"
+                          onChange={(e) => updateItemQuantity(item.id, Math.max(1, parseInt(e.target.value || '1', 10)))}
+                        />
+                        <button type="button" className="button-small" onClick={() => changeQuantityBy(item, 1)}>+</button>
+                      </div>
+                    </td>
+                    <td>INR {((item.price || 0) * item.quantity).toFixed(2)}</td>
+                    <td>
+                      <button
+                        className="remove-btn button-small danger-btn"
+                        type="button"
+                        onClick={() => removeFromCart(item.id)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

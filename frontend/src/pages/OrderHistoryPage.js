@@ -59,30 +59,32 @@ function OrderHistoryPage() {
         ) : orders.length === 0 ? (
           <p>No past orders.</p>
         ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Date</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Refund</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map(order => (
-                <tr key={order.id}>
-                  <td>#{order.id}</td>
-                  <td>{new Date(order.timestamp).toLocaleDateString()}</td>
-                  <td>₹{(order.total_amount || 0).toFixed(2)}</td>
-                  <td>{order.status}</td>
-                  <td>{order.refund_status && order.refund_status !== 'None' ? order.refund_status : '-'}</td>
-                  <td><Link to={`/status/${order.id}`} className="button button-small">View</Link></td>
+          <div className="responsive-table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Refund</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orders.map(order => (
+                  <tr key={order.id}>
+                    <td>#{order.id}</td>
+                    <td>{new Date(order.timestamp).toLocaleDateString()}</td>
+                    <td>₹{(order.total_amount || 0).toFixed(2)}</td>
+                    <td>{order.status}</td>
+                    <td>{order.refund_status && order.refund_status !== 'None' ? order.refund_status : '-'}</td>
+                    <td><Link to={`/status/${order.id}`} className="button button-small">View</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </main>

@@ -377,108 +377,114 @@ function HomePage() {
             </div>
           ) : (
             <>
-              {bestSellingItems.length > 0 && (
-                <div className="menu-category-wrapper best-selling-section">
-                  <div className="category-title-section">
-                    <h3 className="category-title">Best Selling Items</h3>
-                    <span className="item-count">Top {bestSellingItems.length}</span>
-                  </div>
-                    <div className="menu-items-grid">
-                      {bestSellingItems.map((item) => (
-                        <div
-                        key={`best-${item.id}`}
-                        className={`menu-item-card ${(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) ? 'unavailable' : ''}`}
-                      >
-                        {(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) && <span className="unavailable-badge">Unavailable</span>}
-                        <span className="best-seller-badge">Best Seller</span>
-                        <div className="menu-item-image">
-                          {item.image && !String(item.image).includes('default-food') ? (
-                            <img src={`/${item.image}`} alt={item.name} />
-                          ) : (
-                            <div className="menu-item-no-image">{item.name}</div>
-                          )}
-                        </div>
-                        <div className="menu-item-details">
-                          <h4 className="item-name">{standardizeItemName(item.name)}</h4>
-                          <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
-                          <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
-                          <p className="best-seller-meta">{item.units_sold || 0} sold</p>
-                          <div className="item-controls">
-                            <div className="quantity-control">
-                              <label>Qty:</label>
-                              <input
-                                type="number"
-                                value={quantities[item.id] || 1}
-                                min="1"
-                                onChange={(e) => updateQuantity(item.id, e.target.value)}
-                                disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
-                              />
-                            </div>
-                            <button
-                              className="button add-to-cart-btn"
-                              onClick={() => handleAddToCart(item, quantities[item.id] || 1)}
-                              disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
-                            >
-                              Add to Cart
-                            </button>
-                          </div>
-                        </div>
+              {/* Featured Sections - Only show when NOT searching and NOT filtering by a specific category */}
+              {!searchText.trim() && activeCategory === 'ALL' && (
+                <>
+                  {bestSellingItems.length > 0 && (
+                    <div className="menu-category-wrapper best-selling-section">
+                      <div className="category-title-section">
+                        <h3 className="category-title">Best Selling Items</h3>
+                        <span className="item-count">Top {bestSellingItems.length}</span>
                       </div>
-                      ))}
-                  </div>
-                </div>
+                      <div className="menu-items-grid">
+                        {bestSellingItems.map((item) => (
+                          <div
+                            key={`best-${item.id}`}
+                            className={`menu-item-card ${(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) ? 'unavailable' : ''}`}
+                          >
+                            {(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) && <span className="unavailable-badge">Unavailable</span>}
+                            <span className="best-seller-badge">Best Seller</span>
+                            <div className="menu-item-image">
+                              {item.image && !String(item.image).includes('default-food') ? (
+                                <img src={`/${item.image}`} alt={item.name} />
+                              ) : (
+                                <div className="menu-item-no-image">{item.name}</div>
+                              )}
+                            </div>
+                            <div className="menu-item-details">
+                              <h4 className="item-name">{standardizeItemName(item.name)}</h4>
+                              <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
+                              <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
+                              <p className="best-seller-meta">{item.units_sold || 0} sold</p>
+                              <div className="item-controls">
+                                <div className="quantity-control">
+                                  <label>Qty:</label>
+                                  <input
+                                    type="number"
+                                    value={quantities[item.id] || 1}
+                                    min="1"
+                                    onChange={(e) => updateQuantity(item.id, e.target.value)}
+                                    disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
+                                  />
+                                </div>
+                                <button
+                                  className="button add-to-cart-btn"
+                                  onClick={() => handleAddToCart(item, quantities[item.id] || 1)}
+                                  disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
+                                >
+                                  Add to Cart
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {todaySpecialItems.length > 0 && (
+                    <div id="category-TODAY_SPECIAL" className="menu-category-wrapper today-special-section">
+                      <div className="category-title-section">
+                        <h3 className="category-title">Today's Special</h3>
+                        <span className="item-count">({todaySpecialItems.length} items)</span>
+                      </div>
+                      <div className="menu-items-grid">
+                        {todaySpecialItems.map((item) => (
+                          <div
+                            key={`special-${item.id}`}
+                            className={`menu-item-card ${(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) ? 'unavailable' : ''}`}
+                          >
+                            {(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) && <span className="unavailable-badge">Unavailable</span>}
+                            <div className="menu-item-image">
+                              {item.image && !String(item.image).includes('default-food') ? (
+                                <img src={`/${item.image}`} alt={item.name} />
+                              ) : (
+                                <div className="menu-item-no-image">{item.name}</div>
+                              )}
+                            </div>
+                            <div className="menu-item-details">
+                              <h4 className="item-name">{standardizeItemName(item.name)}</h4>
+                              <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
+                              <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
+                              <div className="item-controls">
+                                <div className="quantity-control">
+                                  <label>Qty:</label>
+                                  <input
+                                    type="number"
+                                    value={quantities[item.id] || 1}
+                                    min="1"
+                                    onChange={(e) => updateQuantity(item.id, e.target.value)}
+                                    disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
+                                  />
+                                </div>
+                                <button
+                                  className="button add-to-cart-btn"
+                                  onClick={() => handleAddToCart(item, quantities[item.id] || 1)}
+                                  disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
+                                >
+                                  Add to Cart
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
-              {todaySpecialItems.length > 0 && (
-                <div id="category-TODAY_SPECIAL" className="menu-category-wrapper today-special-section">
-                  <div className="category-title-section">
-                    <h3 className="category-title">Today's Special</h3>
-                    <span className="item-count">({todaySpecialItems.length} items)</span>
-                  </div>
-                  <div className="menu-items-grid">
-                    {todaySpecialItems.map((item) => (
-                      <div
-                        key={`special-${item.id}`}
-                        className={`menu-item-card ${(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) ? 'unavailable' : ''}`}
-                      >
-                        {(Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)) && <span className="unavailable-badge">Unavailable</span>}
-                        <div className="menu-item-image">
-                          {item.image && !String(item.image).includes('default-food') ? (
-                            <img src={`/${item.image}`} alt={item.name} />
-                          ) : (
-                            <div className="menu-item-no-image">{item.name}</div>
-                          )}
-                        </div>
-                        <div className="menu-item-details">
-                            <h4 className="item-name">{standardizeItemName(item.name)}</h4>
-                            <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
-                            <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
-                            <div className="item-controls">
-                            <div className="quantity-control">
-                              <label>Qty:</label>
-                              <input
-                                type="number"
-                                value={quantities[item.id] || 1}
-                                min="1"
-                                onChange={(e) => updateQuantity(item.id, e.target.value)}
-                                disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
-                              />
-                            </div>
-                            <button
-                              className="button add-to-cart-btn"
-                              onClick={() => handleAddToCart(item, quantities[item.id] || 1)}
-                              disabled={Number(item.is_available) !== 1 || !isCategoryAvailableNow(item.menu_type)}
-                            >
-                              Add to Cart
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+              {/* Main Menu Categories */}
               {Object.keys(groupedMenuItems).sort().map((category) => {
                 const items = groupedMenuItems[category];
                 const visibleItems = (items || []).filter(
