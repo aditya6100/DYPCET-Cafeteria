@@ -346,27 +346,6 @@ function HomePage() {
             <button type="button" className={`menu-quick-chip ${quickFilter === 'TODAY' ? 'active' : ''}`} onClick={() => setQuickFilter('TODAY')}>Today's Special</button>
           </div>
 
-          <div className="menu-category-nav">
-            <button
-              type="button"
-              className={`category-nav-btn ${activeCategory === 'ALL' ? 'active' : ''}`}
-              onClick={() => jumpToCategory('ALL')}
-            >
-              All Sections
-            </button>
-            {categoryTabs
-              .filter((category) => category !== 'ALL')
-              .map((category) => (
-                <button
-                  key={`nav-${category}`}
-                  type="button"
-                  className={`category-nav-btn ${activeCategory === category ? 'active' : ''}`}
-                  onClick={() => jumpToCategory(category)}
-                >
-                  {CATEGORY_DISPLAY_NAMES[category] || category}
-                </button>
-              ))}
-          </div>
         </div>
 
         <div className="menu-results-line">Showing {filteredAndSortedItems.length} item(s)</div>
@@ -599,6 +578,29 @@ function HomePage() {
             </>
           )}
           </div>
+
+          <aside className="menu-sections-sidebar">
+            <h4>Sections</h4>
+            <button
+              type="button"
+              className={`section-nav-btn ${activeCategory === 'ALL' ? 'active' : ''}`}
+              onClick={() => jumpToCategory('ALL')}
+            >
+              All Sections
+            </button>
+            {categoryTabs
+              .filter((category) => category !== 'ALL')
+              .map((category) => (
+                <button
+                  key={`side-${category}`}
+                  type="button"
+                  className={`section-nav-btn ${activeCategory === category ? 'active' : ''}`}
+                  onClick={() => jumpToCategory(category)}
+                >
+                  {CATEGORY_DISPLAY_NAMES[category] || category}
+                </button>
+              ))}
+          </aside>
         </div>
       </section>
 

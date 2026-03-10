@@ -944,9 +944,59 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
 
 .menu-layout {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 220px;
     gap: 1rem;
     align-items: start;
+}
+
+.menu-sections-sidebar {
+    position: sticky;
+    top: 190px;
+    background: #ffffff;
+    border: 1px solid #dbe6f3;
+    border-radius: 12px;
+    padding: 0.75rem;
+    box-shadow: var(--shadow-sm);
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+}
+
+.menu-sections-sidebar::-webkit-scrollbar {
+    width: 7px;
+}
+
+.menu-sections-sidebar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #c4d6ec 0%, #9cb7d6 100%);
+    border-radius: 999px;
+}
+
+.menu-sections-sidebar h4 {
+    margin: 0 0 0.55rem;
+    color: #143a63;
+}
+
+.section-nav-btn {
+    width: 100%;
+    text-align: left;
+    padding: 0.52rem 0.6rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    color: #2b496c;
+    background: #f7fafe;
+    margin-bottom: 0.35rem;
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.section-nav-btn:hover {
+    background: #edf4fc;
+    border-color: #ccdbef;
+}
+
+.section-nav-btn.active {
+    background: linear-gradient(135deg, #0a2342 0%, #1a4f85 100%);
+    color: #ffffff;
+    border-color: transparent;
 }
 
 .menu-top-btn {
@@ -1247,6 +1297,30 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
     }
     .menu-header h2 {
         font-size: 2.1rem;
+    }
+    .menu-layout {
+        grid-template-columns: 1fr;
+    }
+    .menu-sections-sidebar {
+        position: sticky;
+        top: 60px; /* Adjust based on mobile header height */
+        z-index: 100;
+        display: flex;
+        overflow-x: auto;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: var(--surface-color);
+        border-bottom: 1px solid #dbe6f3;
+        max-height: none;
+        box-shadow: var(--shadow-sm);
+    }
+    .menu-sections-sidebar h4 { display: none; }
+    .section-nav-btn {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+        margin-bottom: 0;
+        padding: 0.4rem 0.8rem;
     }
     .menu-toolbar.sticky {
         top: 62px;
