@@ -877,8 +877,19 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
 .menu-quick-filters {
     display: flex;
     gap: 0.5rem;
-    flex-wrap: wrap;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
     margin-bottom: 0.7rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.menu-quick-filters::-webkit-scrollbar {
+    height: 4px;
+}
+
+.menu-quick-filters::-webkit-scrollbar-thumb {
+    background: #dde7f4;
+    border-radius: 10px;
 }
 
 .menu-quick-chip {
@@ -1305,7 +1316,8 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
         position: static;
     }
     .menu-toolbar.sticky {
-        top: 62px;
+        position: static;
+        box-shadow: var(--shadow-sm);
     }
 }
 
