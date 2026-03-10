@@ -18,6 +18,7 @@ function HomePage() {
   const [quickFilter, setQuickFilter] = useState('ALL');
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantities, setQuantities] = useState({});
+  const [showCategoryNav, setShowCategoryNav] = useState(false);
 
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
@@ -344,8 +345,38 @@ function HomePage() {
             <button type="button" className={`menu-quick-chip ${quickFilter === 'LUNCH' ? 'active' : ''}`} onClick={() => setQuickFilter('LUNCH')}>Lunch</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'BEST' ? 'active' : ''}`} onClick={() => setQuickFilter('BEST')}>Best Sellers</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'TODAY' ? 'active' : ''}`} onClick={() => setQuickFilter('TODAY')}>Today's Special</button>
+            <button
+              type="button"
+              className={`menu-quick-chip section-toggle-btn ${showCategoryNav ? 'active' : ''}`}
+              onClick={() => setShowCategoryNav(!showCategoryNav)}
+            >
+              {showCategoryNav ? '✕ Close Sections' : '☰ Browse Sections'}
+            </button>
           </div>
 
+          {showCategoryNav && (
+            <div className="menu-category-nav-horizontal">
+              <button
+                type="button"
+                className={`category-nav-item ${activeCategory === 'ALL' ? 'active' : ''}`}
+                onClick={() => jumpToCategory('ALL')}
+              >
+                All Sections
+              </button>
+              {categoryTabs
+                .filter((category) => category !== 'ALL')
+                .map((category) => (
+                  <button
+                    key={`nav-horiz-${category}`}
+                    type="button"
+                    className={`category-nav-item ${activeCategory === category ? 'active' : ''}`}
+                    onClick={() => jumpToCategory(category)}
+                  >
+                    {CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' ')}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
 
         <div className="menu-results-line">Showing {filteredAndSortedItems.length} item(s)</div>

@@ -915,6 +915,73 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
     border-color: transparent;
 }
 
+.section-toggle-btn {
+    background: #fff4e6;
+    border-color: #ffd8a8;
+    color: #d9480f;
+}
+
+.section-toggle-btn:hover {
+    background: #ffe8cc;
+    border-color: #ffc078;
+}
+
+.section-toggle-btn.active {
+    background: linear-gradient(135deg, #d9480f 0%, #f76707 100%);
+    color: #ffffff;
+}
+
+.menu-category-nav-horizontal {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.8rem 0 0.4rem;
+    margin-top: 0.5rem;
+    border-top: 1px dashed #ced8e8;
+    -webkit-overflow-scrolling: touch;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.menu-category-nav-horizontal::-webkit-scrollbar {
+    height: 4px;
+}
+
+.menu-category-nav-horizontal::-webkit-scrollbar-thumb {
+    background: #dde7f4;
+    border-radius: 10px;
+}
+
+.category-nav-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid #d1dded;
+    background: #ffffff;
+    color: #34506d;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-family);
+}
+
+.category-nav-item:hover {
+    background: #f0f7ff;
+    border-color: #9cb8d8;
+}
+
+.category-nav-item.active {
+    background: #0a2342;
+    color: #ffffff;
+    border-color: #0a2342;
+}
+
 .menu-category-tab {
     border: 1px solid #d1dded;
     background: #f6f9fd;
