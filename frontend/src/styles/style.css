@@ -1302,25 +1302,7 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
         grid-template-columns: 1fr;
     }
     .menu-sections-sidebar {
-        position: sticky;
-        top: 60px; /* Adjust based on mobile header height */
-        z-index: 100;
-        display: flex;
-        overflow-x: auto;
-        gap: 0.5rem;
-        padding: 0.5rem;
-        background: var(--surface-color);
-        border-bottom: 1px solid #dbe6f3;
-        max-height: none;
-        box-shadow: var(--shadow-sm);
-    }
-    .menu-sections-sidebar h4 { display: none; }
-    .section-nav-btn {
-        flex: 0 0 auto;
-        width: auto;
-        white-space: nowrap;
-        margin-bottom: 0;
-        padding: 0.4rem 0.8rem;
+        position: static;
     }
     .menu-toolbar.sticky {
         top: 62px;
