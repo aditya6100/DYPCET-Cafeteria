@@ -165,7 +165,7 @@ async function handlePayment() {
         const order = await apiRequest('/orders', 'POST', { amount: totalAmount });
         const user = getUser();
         const rzp = new Razorpay({
-            key: 'rzp_test_SCC134nrEAF7R7',
+            key: 'rzp_test_SP4dD3Sn0jbV2f',
             amount: order.amount,
             currency: "INR",
             name: "DYPCET Cafeteria",
