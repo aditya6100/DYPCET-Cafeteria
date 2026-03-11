@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAlert } from '../../hooks/useAlert';
 import './Auth.css';
@@ -46,6 +46,11 @@ const NewLoginPage = () => {
 
       <div className="auth-right-section">
         <div className="auth-form-container">
+          <div className="auth-tabs">
+            <NavLink to="/login" className={({ isActive }) => `auth-tab ${isActive ? 'active' : ''}`}>Login</NavLink>
+            <NavLink to="/register" className={({ isActive }) => `auth-tab ${isActive ? 'active' : ''}`}>Register</NavLink>
+          </div>
+
           <div className="auth-header">
             <h2>Welcome Back</h2>
             <p>Sign in to your account</p>
