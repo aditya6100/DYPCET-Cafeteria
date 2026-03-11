@@ -522,6 +522,15 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             throw new Error('Today special start time must be before end time.');
         }
 
+        const normalizedMenuType = normalizeCategory(menu_type);
+        const displayOrderRows = await db.query(
+            `SELECT COALESCE(MAX(CASE WHEN display_order <= 2000000000 THEN display_order END), 0) + 1 AS next_order
+             FROM menu_items
+             WHERE UPPER(TRIM(menu_type)) = ?`,
+            [normalizedMenuType]
+        );
+        const displayOrder = Number(displayOrderRows?.[0]?.next_order || 1);
+
         const sql = `INSERT INTO menu_items
             (name, price, cost_price, image, is_available, menu_type, today_special, display_order, today_special_start_at, today_special_end_at, description)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -531,9 +540,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             parsedCostPrice,
             imagePath,
             Number(is_available) ? 1 : 0,
-            normalizeCategory(menu_type),
+            normalizedMenuType,
             Number(today_special) ? 1 : 0,
-            Date.now(),
+            displayOrder,
             startAt,
             endAt,
             description || null
