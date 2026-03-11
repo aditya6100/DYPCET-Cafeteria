@@ -27,10 +27,10 @@ export const AuthProvider = ({ children }) => {
   }, [user, token]);
 
   // Login function now performs API call
-  const login = async (email, password) => {
+  const login = async (identifier, password) => {
     setLoading(true);
     try {
-      const responseData = await apiRequest('/auth/login', 'POST', { email, password });
+      const responseData = await apiRequest('/auth/login', 'POST', { identifier, password });
       saveUserSession(responseData);
       setUser(getLocalUser());
       setToken(localStorage.getItem('token'));

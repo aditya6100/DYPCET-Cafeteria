@@ -5,7 +5,7 @@ import { useAlert } from '../../hooks/useAlert';
 import './Auth.css';
 
 const NewLoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
@@ -15,7 +15,7 @@ const NewLoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await login(email, password);
+      await login(identifier, password);
       showAlert('Login successful!', 'success');
       navigate('/');
     } catch (error) {
@@ -65,8 +65,8 @@ const NewLoginPage = () => {
                   type="text"
                   id="email"
                   placeholder="you@example.com or 10-digit mobile"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
                   autoComplete="username"
                 />
