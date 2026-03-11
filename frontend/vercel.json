@@ -1,12 +1,15 @@
 {
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "https://dypcet-cafeteria.onrender.com/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
   ]
 }
+
