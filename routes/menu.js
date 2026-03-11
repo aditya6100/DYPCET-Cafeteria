@@ -7,8 +7,19 @@ const { formidable } = require('formidable'); // Import formidable factory funct
 module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const router = express.Router();
     const { protect, admin } = auth;
-    const normalizeCategory = (value = 'REGULAR') =>
-        String(value).trim().toUpperCase().replace(/\s+/g, '_') || 'REGULAR';
+    const normalizeCategory = (value = 'REGULAR') => {
+        const raw = String(value ?? '').trim().toUpperCase();
+        const normalized = raw
+            .replace(/[^A-Z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+
+        // Map common legacy labels to the canonical category keys used in the UI.
+        const aliases = {
+            HOT_BEVERAGES_TEA: 'HOT_BEVERAGES'
+        };
+
+        return aliases[normalized] || normalized || 'REGULAR';
+    };
     const toSqlDateTime = (value) => {
         if (!value) return null;
         const date = new Date(value);
@@ -76,7 +87,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         await db.query(
             `UPDATE menu_items
              SET menu_type = 'HOT_BEVERAGES'
-             WHERE menu_type IN ('HOT BEVERAGES/TEA', 'HOT_BEVERAGES/TEA', 'HOT BEVERAGES')`
+             WHERE menu_type IN ('HOT BEVERAGES/TEA', 'HOT_BEVERAGES/TEA', 'HOT BEVERAGES', 'HOT_BEVERAGES_TEA')`
         );
 
         // Ensure a basic "Tea" item exists under HOT_BEVERAGES for fresh databases.
