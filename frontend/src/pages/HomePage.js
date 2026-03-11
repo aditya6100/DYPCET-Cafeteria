@@ -23,7 +23,7 @@ function HomePage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
   const { showAlert } = useAlert();
-  const { addToCart } = useCart();
+  const { cart, addToCart, cartTotal, cartCount } = useCart();
 
   const standardizeItemName = (value = '') => String(value)
     .replace(/\bIdali\b/gi, 'Idli')
@@ -651,6 +651,18 @@ function HomePage() {
       >
         Top
       </button>
+
+      {cart.length > 0 && (
+        <div className="floating-cart-bar">
+          <div className="floating-cart-info">
+            <span className="cart-count-badge">{cartCount} Item{cartCount !== 1 ? 's' : ''} added</span>
+            <span className="cart-total-price">Total: ₹{cartTotal.toFixed(2)}</span>
+          </div>
+          <button className="button view-cart-btn" onClick={() => navigate('/cart')}>
+            View Cart 🛒
+          </button>
+        </div>
+      )}
     </main>
   );
 }
