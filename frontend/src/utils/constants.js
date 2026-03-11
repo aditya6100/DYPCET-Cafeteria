@@ -32,7 +32,7 @@ export const CATEGORY_DISPLAY_NAMES = {
   'HOT_BEVERAGES': 'Hot Beverages',
   'ICE_CREAM': 'Ice Cream',
   'MAGGIE_PASTA': 'Maggie / Pasta',
-  'MAIN_COURSE': 'Main Course',
+  'MAIN_COURSE': 'Thali',
   'MOMOS': 'Momos',
   'NUGGETS': 'Nuggets',
   'PIZZA': 'Pizza',
