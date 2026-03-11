@@ -182,9 +182,10 @@ module.exports = (config, db) => {
             );
         } else {
             let mobile = digitsOnly;
-            // Support +91XXXXXXXXXX / 91XXXXXXXXXX inputs.
-            if (mobile.length === 12 && mobile.startsWith('91')) {
-                mobile = mobile.slice(2);
+            // Support inputs like +91XXXXXXXXXX / 91XXXXXXXXXX / 0XXXXXXXXXX / 0091XXXXXXXXXX.
+            // Always normalize to the last 10 digits.
+            if (mobile.length > 10) {
+                mobile = mobile.slice(-10);
             }
             if (!/^\d{10}$/.test(mobile)) {
                 res.status(400);
