@@ -331,8 +331,6 @@ function AdminMenuPage() {
         is_available: newStatus,
       });
       showAlert(newStatus === 0 ? 'Item marked unavailable!' : 'Item marked available!', 'success');
-      // Re-fetch to confirm server sync
-      fetchMenuItems();
     } catch (error) {
       // Revert on error
       setMenuItems(prev => prev.map(item => 
@@ -354,8 +352,6 @@ function AdminMenuPage() {
         today_special: newStatus,
       });
       showAlert(newStatus === 0 ? 'Removed from today special.' : 'Marked as today special!', 'success');
-      // Re-fetch to confirm server sync
-      fetchMenuItems();
     } catch (error) {
       // Revert on error
       setMenuItems(prev => prev.map(item => 
