@@ -163,18 +163,43 @@ module.exports = (config, db) => {
     // @route   POST /api/auth/login
     // @access  Public
     router.post('/login', asyncHandler(async (req, res) => {
-        const { email, password } = req.body;
+        const identifier = String(req.body?.identifier ?? req.body?.email ?? req.body?.mobile_no ?? '').trim();
+        const password = req.body?.password;
 
-        if (!email || !password) {
+        if (!identifier || !password) {
             res.status(400);
-            throw new Error('Please provide email and password.');
+            throw new Error('Please provide email/mobile number and password.');
         }
 
-        const users = await db.query('SELECT id, name, email, password, user_type FROM users WHERE email = ?', [email]);
+        const digitsOnly = identifier.replace(/\D/g, '');
+        const looksLikeEmail = identifier.includes('@');
+
+        let users = [];
+        if (looksLikeEmail) {
+            users = await db.query(
+                'SELECT id, name, email, password, user_type, mobile_no FROM users WHERE email = ? LIMIT 1',
+                [identifier]
+            );
+        } else {
+            let mobile = digitsOnly;
+            // Support +91XXXXXXXXXX / 91XXXXXXXXXX inputs.
+            if (mobile.length === 12 && mobile.startsWith('91')) {
+                mobile = mobile.slice(2);
+            }
+            if (!/^\d{10}$/.test(mobile)) {
+                res.status(400);
+                throw new Error('Please enter a valid email or 10-digit mobile number.');
+            }
+
+            users = await db.query(
+                'SELECT id, name, email, password, user_type, mobile_no FROM users WHERE mobile_no = ? LIMIT 1',
+                [mobile]
+            );
+        }
 
         if (users.length === 0) {
             res.status(401);
-            throw new Error('Invalid email or password.');
+            throw new Error('Invalid email/mobile number or password.');
         }
 
         const user = users[0];
@@ -186,11 +211,12 @@ module.exports = (config, db) => {
                 name: user.name,
                 email: user.email,
                 user_type: user.user_type,
+                mobile_no: user.mobile_no,
                 token: generateToken(user.id, user.name, user.user_type),
             });
         } else {
             res.status(401);
-            throw new Error('Invalid email or password.');
+            throw new Error('Invalid email/mobile number or password.');
         }
     }));
 

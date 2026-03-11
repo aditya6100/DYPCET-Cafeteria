@@ -58,16 +58,17 @@ const NewLoginPage = () => {
 
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
-              <label htmlFor="email">Email Address</label>
+              <label htmlFor="email">Email or Mobile Number</label>
               <div className="input-wrapper">
                 <span className="input-icon">✉️</span>
                 <input
-                  type="email"
+                  type="text"
                   id="email"
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or 10-digit mobile"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="username"
                 />
               </div>
             </div>
