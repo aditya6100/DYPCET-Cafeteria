@@ -92,6 +92,11 @@ const NewLoginPage = () => {
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
+              <div style={{ textAlign: 'right', marginTop: '5px' }}>
+                <Link to="/forgot-password" size="small" style={{ fontSize: '0.85rem', color: '#F47F20', textDecoration: 'none', fontWeight: '500' }}>
+                  Forgot password?
+                </Link>
+              </div>
             </div>
 
             <button type="submit" className="auth-submit-btn">
@@ -106,12 +111,6 @@ const NewLoginPage = () => {
               Don't have an account?{' '}
               <Link to="/register" className="auth-link">
                 Create one now
-              </Link>
-            </p>
-            <p>
-              Forgot password?{' '}
-              <Link to="/forgot-password" className="auth-link">
-                Reset here
               </Link>
             </p>
           </div>
