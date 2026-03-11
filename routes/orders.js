@@ -876,7 +876,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
 
         const rows = await db.query(
-            `SELECT id, total AS total_amount, refund_status, refund_amount
+            `SELECT id, total AS total_amount, refund_status, refund_amount, payment_id, transaction_id
              FROM orders
              WHERE id = ?`,
             [orderId]
@@ -915,7 +915,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                      refund_processed_at = NULL,
                      refund_processed_by = ?,
                      refund_last_action = 'approve'
-                 WHERE id = ?`,
+                  WHERE id = ?`,
                 [Number(safeAmount.toFixed(2)), safeAdminNote, req.user.id, orderId]
             );
             nextRefundStatus = 'Approved';
@@ -928,11 +928,35 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                      refund_processed_at = NOW(),
                      refund_processed_by = ?,
                      refund_last_action = 'reject'
-                 WHERE id = ?`,
+                  WHERE id = ?`,
                 [safeAdminNote || 'Refund request rejected by admin.', req.user.id, orderId]
             );
             nextRefundStatus = 'Rejected';
         } else {
+            // ACTION: PROCESS (Actual API Call)
+            const refundAmount = Number(order.refund_amount || order.total_amount || 0);
+
+            // 1. If it's a Razorpay payment, call their API
+            if (order.payment_id && order.payment_id.startsWith('pay_')) {
+                try {
+                    console.log(`[REFUND] Initiating Razorpay refund for payment ${order.payment_id}, amount: ${refundAmount}`);
+                    const rzpRefund = await razorpay.payments.refund(order.payment_id, {
+                        amount: Math.round(refundAmount * 100), // convert to paise
+                        notes: {
+                            reason: auditReason || 'Admin processed refund',
+                            order_id: orderId.toString()
+                        }
+                    });
+                    console.log(`[REFUND] Razorpay refund successful: ${rzpRefund.id}`);
+                } catch (rzpError) {
+                    console.error("[REFUND] Razorpay API refund failed:", rzpError);
+                    res.status(500);
+                    throw new Error(`Razorpay Refund Failed: ${rzpError.description || rzpError.message || 'Unknown error'}`);
+                }
+            } else {
+                console.log(`[REFUND] Order ${orderId} does not have a Razorpay payment ID (${order.payment_id}). Proceeding with manual/DB-only refund.`);
+            }
+
             await db.query(
                 `UPDATE orders
                  SET refund_status = 'Processed',
@@ -945,9 +969,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 [safeAdminNote || 'Refund processed successfully.', req.user.id, orderId]
             );
             nextRefundStatus = 'Processed';
-            loggedAmount = Number(order.refund_amount || 0);
+            loggedAmount = refundAmount;
         }
-
         await db.query(
             `INSERT INTO refund_audit_logs
                 (order_id, action, previous_refund_status, next_refund_status, amount, reason, processed_by, processed_by_name)

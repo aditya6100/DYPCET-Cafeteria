@@ -777,8 +777,9 @@ function AdminOrdersPage() {
                       disabled={refundActionLoading}
                       onClick={() => handleRefundAction(selectedOrder.id, 'process')}
                     >
-                      Mark Processed
+                      Process Refund (Live API)
                     </button>
+
                   </div>
                 )}
 
