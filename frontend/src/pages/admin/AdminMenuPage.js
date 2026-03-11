@@ -31,6 +31,7 @@ function AdminMenuPage() {
   const [savingNotice, setSavingNotice] = useState(false);
   const [categoryTimings, setCategoryTimings] = useState({});
   const [savingCategoryTiming, setSavingCategoryTiming] = useState('');
+  const [showTimings, setShowTimings] = useState(false);
   const { showAlert } = useAlert();
 
   const [formData, setFormData] = useState({
@@ -546,6 +547,9 @@ function AdminMenuPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          <button className="button" onClick={() => setShowTimings(!showTimings)}>
+            {showTimings ? 'Hide Timings' : 'Manage Section Timings'}
+          </button>
           <button className="button btn-add-item" onClick={handleAddCategory}>+ Add Category</button>
           <button className="button btn-add-item" onClick={openAddModal}>+ Add New Item</button>
         </div>
@@ -568,54 +572,56 @@ function AdminMenuPage() {
         </div>
       </div>
 
-      <div className="menu-notice-admin-card">
-        <label>Section Timings (Admin Controlled)</label>
-        <div className="category-timings-admin-list">
-          {availableCategories
-            .slice()
-            .sort((a, b) => String(a).localeCompare(String(b)))
-            .map((category) => {
-              const key = String(category || '').toUpperCase().trim();
-              const current = categoryTimings?.[key] || {
-                is_enabled: false,
-                start_time: '',
-                end_time: ''
-              };
-              return (
-                <div key={`timing-${key}`} className="category-timing-row">
-                  <div className="category-timing-name">{CATEGORY_DISPLAY_NAMES[key] || key.replace(/_/g, ' ')}</div>
-                  <label className="category-timing-toggle">
+      {showTimings && (
+        <div className="menu-notice-admin-card">
+          <label>Section Timings (Admin Controlled)</label>
+          <div className="category-timings-admin-list">
+            {availableCategories
+              .slice()
+              .sort((a, b) => String(a).localeCompare(String(b)))
+              .map((category) => {
+                const key = String(category || '').toUpperCase().trim();
+                const current = categoryTimings?.[key] || {
+                  is_enabled: false,
+                  start_time: '',
+                  end_time: ''
+                };
+                return (
+                  <div key={`timing-${key}`} className="category-timing-row">
+                    <div className="category-timing-name">{CATEGORY_DISPLAY_NAMES[key] || key.replace(/_/g, ' ')}</div>
+                    <label className="category-timing-toggle">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(current.is_enabled)}
+                        onChange={(e) => updateCategoryTimingField(key, 'is_enabled', e.target.checked)}
+                      />
+                      Enable
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={Boolean(current.is_enabled)}
-                      onChange={(e) => updateCategoryTimingField(key, 'is_enabled', e.target.checked)}
+                      type="time"
+                      value={current.start_time || ''}
+                      onChange={(e) => updateCategoryTimingField(key, 'start_time', e.target.value)}
+                      disabled={!current.is_enabled}
                     />
-                    Enable
-                  </label>
-                  <input
-                    type="time"
-                    value={current.start_time || ''}
-                    onChange={(e) => updateCategoryTimingField(key, 'start_time', e.target.value)}
-                    disabled={!current.is_enabled}
-                  />
-                  <input
-                    type="time"
-                    value={current.end_time || ''}
-                    onChange={(e) => updateCategoryTimingField(key, 'end_time', e.target.value)}
-                    disabled={!current.is_enabled}
-                  />
-                  <button
-                    className="button-small"
-                    onClick={() => saveCategoryTiming(key)}
-                    disabled={savingCategoryTiming === key}
-                  >
-                    {savingCategoryTiming === key ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              );
-            })}
+                    <input
+                      type="time"
+                      value={current.end_time || ''}
+                      onChange={(e) => updateCategoryTimingField(key, 'end_time', e.target.value)}
+                      disabled={!current.is_enabled}
+                    />
+                    <button
+                      className="button-small"
+                      onClick={() => saveCategoryTiming(key)}
+                      disabled={savingCategoryTiming === key}
+                    >
+                      {savingCategoryTiming === key ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                );
+              })}
+          </div>
         </div>
-      </div>
+      )}
 
       {String(searchTerm || '').trim() && (
         <p className="admin-menu-search-note">
