@@ -1,26 +1,46 @@
 // frontend/src/utils/constants.js
 
 export const MENU_CATEGORIES = [
-  'ALL_TIME_FAVORITE',
-  'PIZZA',
-  'FRIES_NUGGETS_MOMOS',
-  'BEVERAGES',
+  'BREAKFAST',
+  'BURGER',
   'CHINESE',
+  'COLD_COFFEE',
+  'FRIES',
+  'HOT_BEVERAGES',
+  'ICE_CREAM',
+  'MAGGIE_PASTA',
+  'MAIN_COURSE',
+  'MOMOS',
+  'NUGGETS',
+  'PIZZA',
+  'SANDWICH',
+  'SHAKES',
+  'SOUTH_INDIAN',
   'THALI',
   'TODAYS_SPECIAL',
-  'LUNCH',
-  'REGULAR' // Keep regular for backward compatibility or general items
+  'ALL_TIME_FAVORITE',
+  'REGULAR'
 ];
 
 // Map for display names
 export const CATEGORY_DISPLAY_NAMES = {
-  'ALL_TIME_FAVORITE': 'All Time Favorite',
-  'PIZZA': 'Pizza',
-  'FRIES_NUGGETS_MOMOS': 'Fries / Nuggets / Momos',
-  'BEVERAGES': 'Beverages',
+  'BREAKFAST': 'Breakfast',
+  'BURGER': 'Burger',
   'CHINESE': 'Chinese',
+  'COLD_COFFEE': 'Cold Coffee',
+  'FRIES': 'Fries',
+  'HOT_BEVERAGES': 'Hot Beverages',
+  'ICE_CREAM': 'Ice Cream',
+  'MAGGIE_PASTA': 'Maggie / Pasta',
+  'MAIN_COURSE': 'Main Course',
+  'MOMOS': 'Momos',
+  'NUGGETS': 'Nuggets',
+  'PIZZA': 'Pizza',
+  'SANDWICH': 'Sandwich',
+  'SHAKES': 'Shakes',
+  'SOUTH_INDIAN': 'South Indian',
   'THALI': 'Thali',
   'TODAYS_SPECIAL': "Today's Special",
-  'LUNCH': 'Lunch',
+  'ALL_TIME_FAVORITE': 'All Time Favorite',
   'REGULAR': 'Regular'
 };

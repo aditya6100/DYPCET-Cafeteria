@@ -62,6 +62,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         if (!existing.has('today_special_end_at')) {
             await db.query(`ALTER TABLE menu_items ADD COLUMN today_special_end_at DATETIME NULL`);
         }
+        if (!existing.has('description')) {
+            await db.query(`ALTER TABLE menu_items ADD COLUMN description TEXT NULL`);
+        }
 
         await db.query(
             `CREATE TABLE IF NOT EXISTS menu_settings (
@@ -436,7 +439,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             is_available,
             today_special,
             today_special_start_at,
-            today_special_end_at
+            today_special_end_at,
+            description
         } = req.body;
         
         // Check for required fields BEFORE parsing numbers
@@ -460,8 +464,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
 
         const sql = `INSERT INTO menu_items
-            (name, price, cost_price, image, is_available, menu_type, today_special, display_order, today_special_start_at, today_special_end_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            (name, price, cost_price, image, is_available, menu_type, today_special, display_order, today_special_start_at, today_special_end_at, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const params = [
             name,
             parseFloat(price),
@@ -472,7 +476,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             Number(today_special) ? 1 : 0,
             Date.now(),
             startAt,
-            endAt
+            endAt,
+            description || null
         ];
         
         const result = await db.query(sql, params);
@@ -539,6 +544,10 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         if (today_special_end_at !== undefined) {
             fieldsToUpdate.push("today_special_end_at = ?");
             params.push(toSqlDateTime(today_special_end_at));
+        }
+        if (description !== undefined) {
+            fieldsToUpdate.push("description = ?");
+            params.push(description || null);
         }
 
         const hasStart = today_special_start_at !== undefined;

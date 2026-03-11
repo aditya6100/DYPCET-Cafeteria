@@ -47,6 +47,7 @@ function AdminMenuPage() {
     today_special_end_at: '',
     image: null,
     image_url: '',
+    description: '',
   });
 
   const fetchMenuItems = useCallback(async () => {
@@ -140,6 +141,7 @@ function AdminMenuPage() {
         today_special_end_at: toInputDateTime(currentEditItem.today_special_end_at),
         image: null,
         image_url: currentEditItem.image ? `/${currentEditItem.image}` : '',
+        description: currentEditItem.description || '',
       });
     } else {
       setFormData({
@@ -155,6 +157,7 @@ function AdminMenuPage() {
         today_special_end_at: '',
         image: null,
         image_url: '',
+        description: '',
       });
     }
   }, [currentEditItem, availableCategories]);
@@ -284,6 +287,7 @@ function AdminMenuPage() {
     itemData.append('today_special', formData.today_special ? '1' : '0');
     itemData.append('today_special_start_at', formData.today_special_start_at || '');
     itemData.append('today_special_end_at', formData.today_special_end_at || '');
+    itemData.append('description', formData.description || '');
     if (formData.image) {
       itemData.append('image', formData.image);
     }
@@ -746,6 +750,17 @@ function AdminMenuPage() {
               <div className="input-group">
                 <label htmlFor="cost_price">Cost Price (INR)</label>
                 <input type="number" name="cost_price" value={formData.cost_price} onChange={handleFormChange} step="0.01" required />
+              </div>
+              <div className="input-group">
+                <label htmlFor="description">Description / Components (e.g. Rice, Dal, Roti)</label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleFormChange}
+                  rows="3"
+                  placeholder="List items included in this Thali or deal"
+                ></textarea>
               </div>
               <div className="input-group">
                 <label htmlFor="menu_type">Category</label>

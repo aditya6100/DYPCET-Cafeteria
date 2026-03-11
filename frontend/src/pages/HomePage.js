@@ -434,6 +434,7 @@ function HomePage() {
                             </div>
                             <div className="menu-item-details">
                               <h4 className="item-name">{standardizeItemName(item.name)}</h4>
+                              {item.description && <p className="item-description" style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', lineHeight: '1.2' }}>{item.description}</p>}
                               <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
                               <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
                               <p className="best-seller-meta">{item.units_sold || 0} sold</p>
@@ -485,6 +486,7 @@ function HomePage() {
                             </div>
                             <div className="menu-item-details">
                               <h4 className="item-name">{standardizeItemName(item.name)}</h4>
+                              {item.description && <p className="item-description" style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', lineHeight: '1.2' }}>{item.description}</p>}
                               <p className="item-price">{'\u20B9'}{(item.price || 0).toFixed(2)}</p>
                               <p className="prep-time">Ready in {getPrepTimeLabel(item)}</p>
                               <div className="item-controls">
@@ -560,6 +562,7 @@ function HomePage() {
                           </div>
                           <div className="menu-item-details">
                             <h4 className="item-name">{standardizeItemName(group.displayName)}</h4>
+                            {selectedItem.description && <p className="item-description" style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', lineHeight: '1.2' }}>{selectedItem.description}</p>}
                             {group.variants.length > 1 && (
                               <div className="variant-selector">
                                 <label>Size:</label>
