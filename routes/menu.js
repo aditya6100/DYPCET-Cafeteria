@@ -37,6 +37,11 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME = 'menu_items'`
         );
+        if (!Array.isArray(columns) || columns.length === 0) {
+            // menu_items table is expected to exist (created via SQL dump/migration).
+            // If it doesn't, skip menu-specific column updates/seeding here.
+            return;
+        }
         const existing = new Set((columns || []).map((c) => c.COLUMN_NAME));
         const menuTypeColumn = (columns || []).find((c) => c.COLUMN_NAME === 'menu_type');
 
@@ -64,6 +69,37 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
         if (!existing.has('description')) {
             await db.query(`ALTER TABLE menu_items ADD COLUMN description TEXT NULL`);
+        }
+
+        // Normalize legacy hot beverages category labels so items like "Tea"
+        // appear under the correct HOT_BEVERAGES section in the menu UI.
+        await db.query(
+            `UPDATE menu_items
+             SET menu_type = 'HOT_BEVERAGES'
+             WHERE menu_type IN ('HOT BEVERAGES/TEA', 'HOT_BEVERAGES/TEA', 'HOT BEVERAGES')`
+        );
+
+        // Ensure a basic "Tea" item exists under HOT_BEVERAGES for fresh databases.
+        const existingTea = await db.query(
+            `SELECT id
+             FROM menu_items
+             WHERE LOWER(TRIM(name)) = 'tea'
+               AND UPPER(TRIM(menu_type)) = 'HOT_BEVERAGES'
+             LIMIT 1`
+        );
+        if (!Array.isArray(existingTea) || existingTea.length === 0) {
+            const nextOrderRows = await db.query(
+                `SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order
+                 FROM menu_items
+                 WHERE UPPER(TRIM(menu_type)) = 'HOT_BEVERAGES'`
+            );
+            const nextOrder = Number(nextOrderRows?.[0]?.next_order || 1);
+            await db.query(
+                `INSERT INTO menu_items
+                    (name, price, cost_price, image, is_available, menu_type, today_special, display_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                ['Tea', 10, 10, 'food_images/default-food.png', 1, 'HOT_BEVERAGES', 0, nextOrder]
+            );
         }
 
         await db.query(
