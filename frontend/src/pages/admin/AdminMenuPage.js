@@ -54,7 +54,7 @@ function AdminMenuPage() {
     try {
       setLoading(true);
       const [itemsData, categoriesData, noticeData, timingData] = await Promise.all([
-        apiRequest('/menu'),
+        apiRequest('/menu?t=' + Date.now()),
         apiRequest('/menu/categories').catch(() => []),
         apiRequest('/menu/notice').catch(() => ({ notice: '' })),
         apiRequest('/menu/category-timings').catch(() => [])

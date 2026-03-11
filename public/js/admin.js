@@ -180,7 +180,7 @@ async function handleMenuPage() {
     });
 
     try {
-        const items = await apiRequest('/menu');
+        const items = await apiRequest('/menu?t=' + Date.now());
         if (!Array.isArray(items)) throw new Error("Invalid menu data received.");
         container.innerHTML = items.length === 0 ? '<p>No menu items found.</p>' : `
             <table class="admin-table">
