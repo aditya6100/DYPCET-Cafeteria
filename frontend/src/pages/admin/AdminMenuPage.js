@@ -273,15 +273,34 @@ function AdminMenuPage() {
       : formData.menu_type
     ).trim();
 
+    const trimmedName = String(formData.name || '').trim();
+    if (!trimmedName) {
+      showAlert('Item name is required.', 'error');
+      return;
+    }
+
     if (!finalCategory) {
       showAlert('Please select or enter a category.', 'error');
       return;
     }
 
+    const priceValue = Number.parseFloat(String(formData.price || '').trim());
+    if (!Number.isFinite(priceValue) || priceValue < 0) {
+      showAlert('Please enter a valid price.', 'error');
+      return;
+    }
+
+    const costPriceText = String(formData.cost_price || '').trim();
+    const costPriceValue = costPriceText === '' ? 0 : Number.parseFloat(costPriceText);
+    if (!Number.isFinite(costPriceValue) || costPriceValue < 0) {
+      showAlert('Please enter a valid cost price (or keep it empty for 0).', 'error');
+      return;
+    }
+
     const itemData = new FormData();
-    itemData.append('name', formData.name);
-    itemData.append('price', parseFloat(formData.price));
-    itemData.append('cost_price', parseFloat(formData.cost_price));
+    itemData.append('name', trimmedName);
+    itemData.append('price', String(priceValue));
+    itemData.append('cost_price', String(costPriceValue));
     itemData.append('menu_type', finalCategory);
     itemData.append('is_available', formData.is_available ? '1' : '0');
     itemData.append('today_special', formData.today_special ? '1' : '0');

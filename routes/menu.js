@@ -443,10 +443,22 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             description
         } = req.body;
         
-        // Check for required fields BEFORE parsing numbers
-        if (!name || price === undefined || cost_price === undefined) {
+        const trimmedName = String(name || '').trim();
+        const parsedPrice = Number.parseFloat(String(price ?? '').trim());
+        const costText = String(cost_price ?? '').trim();
+        const parsedCostPrice = costText === '' ? 0 : Number.parseFloat(costText);
+
+        if (!trimmedName) {
             res.status(400);
-            throw new Error('Missing required fields: name, price, cost_price');
+            throw new Error('Missing required field: name');
+        }
+        if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+            res.status(400);
+            throw new Error('Invalid price value.');
+        }
+        if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
+            res.status(400);
+            throw new Error('Invalid cost_price value.');
         }
 
         let imagePath = 'food_images/default-food.png'; // Default image
@@ -467,9 +479,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             (name, price, cost_price, image, is_available, menu_type, today_special, display_order, today_special_start_at, today_special_end_at, description)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const params = [
-            name,
-            parseFloat(price),
-            parseFloat(cost_price),
+            trimmedName,
+            parsedPrice,
+            parsedCostPrice,
             imagePath,
             Number(is_available) ? 1 : 0,
             normalizeCategory(menu_type),
