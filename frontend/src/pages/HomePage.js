@@ -31,9 +31,9 @@ function HomePage() {
     .replace(/\bBlack Current\b/gi, 'Black Currant')
     .replace(/\bBornvita\b/gi, 'Bournvita');
 
-  const isLunchCategory = (item) => {
+  const isThaliCategory = (item) => {
     const category = String(item?.menu_type || '').toUpperCase().trim();
-    return ['MAIN_COURSE', 'SOUTH_INDIAN', 'CHINESE'].includes(category);
+    return ['MAIN_COURSE', 'THALI'].includes(category);
   };
 
   const getPrepTimeLabel = (item) => {
@@ -177,8 +177,8 @@ function HomePage() {
       );
     } else if (quickFilter === 'UNDER_50') {
       items = items.filter((item) => Number(item.price || 0) <= 50);
-    } else if (quickFilter === 'LUNCH') {
-      items = items.filter((item) => isLunchCategory(item));
+    } else if (quickFilter === 'THALI') {
+      items = items.filter((item) => isThaliCategory(item));
     } else if (quickFilter === 'BEST') {
       items = items.filter((item) => bestSellerIds.has(Number(item.id)));
     } else if (quickFilter === 'TODAY') {
@@ -342,7 +342,7 @@ function HomePage() {
             <button type="button" className={`menu-quick-chip ${quickFilter === 'ALL' ? 'active' : ''}`} onClick={() => setQuickFilter('ALL')}>All</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'AVAILABLE' ? 'active' : ''}`} onClick={() => setQuickFilter('AVAILABLE')}>Available Now</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'UNDER_50' ? 'active' : ''}`} onClick={() => setQuickFilter('UNDER_50')}>Under ₹50</button>
-            <button type="button" className={`menu-quick-chip ${quickFilter === 'LUNCH' ? 'active' : ''}`} onClick={() => setQuickFilter('LUNCH')}>Lunch</button>
+            <button type="button" className={`menu-quick-chip ${quickFilter === 'THALI' ? 'active' : ''}`} onClick={() => setQuickFilter('THALI')}>Thali</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'BEST' ? 'active' : ''}`} onClick={() => setQuickFilter('BEST')}>Best Sellers</button>
             <button type="button" className={`menu-quick-chip ${quickFilter === 'TODAY' ? 'active' : ''}`} onClick={() => setQuickFilter('TODAY')}>Today's Special</button>
             <button
