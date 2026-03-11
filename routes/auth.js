@@ -7,6 +7,7 @@ const https = require('https');
 
 module.exports = (config, db) => {
     const router = express.Router();
+    const { protect } = require('../middleware/auth')(config, db);
 
     // Helper to generate JWT
     const generateToken = (id, name, user_type) => {
