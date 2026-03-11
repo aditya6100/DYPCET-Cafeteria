@@ -315,25 +315,43 @@ function AdminMenuPage() {
   };
 
   const handleAvailabilityToggle = async (itemId, currentStatus) => {
+    const newStatus = currentStatus ? 0 : 1;
+    // Optimistic Update
+    setMenuItems(prev => prev.map(item => 
+      item.id === itemId ? { ...item, is_available: newStatus } : item
+    ));
+
     try {
       await apiRequest(`/menu/${itemId}`, 'PUT', {
-        is_available: currentStatus ? 0 : 1,
+        is_available: newStatus,
       });
-      showAlert(currentStatus ? 'Item marked unavailable!' : 'Item marked available!', 'success');
-      fetchMenuItems();
+      showAlert(newStatus === 0 ? 'Item marked unavailable!' : 'Item marked available!', 'success');
     } catch (error) {
+      // Revert on error
+      setMenuItems(prev => prev.map(item => 
+        item.id === itemId ? { ...item, is_available: currentStatus } : item
+      ));
       showAlert(`Error updating availability: ${error.message}`, 'error');
     }
   };
 
   const handleTodaySpecialToggle = async (itemId, currentStatus) => {
+    const newStatus = currentStatus ? 0 : 1;
+    // Optimistic Update
+    setMenuItems(prev => prev.map(item => 
+      item.id === itemId ? { ...item, today_special: newStatus } : item
+    ));
+
     try {
       await apiRequest(`/menu/${itemId}`, 'PUT', {
-        today_special: currentStatus ? 0 : 1,
+        today_special: newStatus,
       });
-      showAlert(currentStatus ? 'Removed from today special.' : 'Marked as today special!', 'success');
-      fetchMenuItems();
+      showAlert(newStatus === 0 ? 'Removed from today special.' : 'Marked as today special!', 'success');
     } catch (error) {
+      // Revert on error
+      setMenuItems(prev => prev.map(item => 
+        item.id === itemId ? { ...item, today_special: currentStatus } : item
+      ));
       showAlert(`Error updating today special: ${error.message}`, 'error');
     }
   };
