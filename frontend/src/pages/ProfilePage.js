@@ -7,14 +7,23 @@ import { useAlert } from '../hooks/useAlert';
 import apiRequest from '../utils/api';
 
 function ProfilePage() {
-  const { isLoggedIn, user, updateUser } = useAuth();
+  const { isLoggedIn, user, updateUser, changePassword } = useAuth();
   const { showAlert } = useAlert();
   const navigate = useNavigate();
 
   const [profileFormData, setProfileFormData] = useState({
-    name: user ? user.name : '',
-    email: user ? user.email : '',
-    mobile_no: '', // Mobile number is not in the current user context, will need to fetch or add it
+    name: '',
+    email: '',
+    mobile_no: '',
+    user_type: 'student',
+    student_id: '',
+    address: '',
+  });
+
+  const [passwordFormData, setPasswordFormData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
   const [feedbackFormData, setFeedbackFormData] = useState({
@@ -35,7 +44,10 @@ function ProfilePage() {
         setProfileFormData({
           name: fullUser.name || '',
           email: fullUser.email || '',
-          mobile_no: fullUser.mobile_no || ''
+          mobile_no: fullUser.mobile_no || '',
+          user_type: fullUser.user_type || 'student',
+          student_id: fullUser.student_id || '',
+          address: fullUser.address || '',
         });
         updateUser(fullUser);
       } catch (error) {
@@ -47,7 +59,10 @@ function ProfilePage() {
       setProfileFormData({
         name: user.name || '',
         email: user.email || '',
-        mobile_no: user.mobile_no || ''
+        mobile_no: user.mobile_no || '',
+        user_type: user.user_type || 'student',
+        student_id: user.student_id || '',
+        address: user.address || '',
       });
     }
 
@@ -66,14 +81,40 @@ function ProfilePage() {
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
     try {
-      const updatedUser = await apiRequest('/users/profile', 'PUT', {
+      const response = await apiRequest('/auth/profile', 'PUT', {
         name: profileFormData.name,
-        mobile_no: profileFormData.mobile_no,
+        user_type: profileFormData.user_type,
+        student_id: profileFormData.user_type === 'student' ? profileFormData.student_id : null,
+        address: profileFormData.user_type === 'visitor' ? profileFormData.address : null,
       });
-      updateUser(updatedUser);
+      updateUser(response.user);
       showAlert('Profile updated successfully!', 'success');
     } catch (error) {
       showAlert(`Profile update failed: ${error.message}`, 'error');
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    const { id, value } = e.target;
+    setPasswordFormData((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (passwordFormData.newPassword !== passwordFormData.confirmPassword) {
+      showAlert('New passwords do not match!', 'error');
+      return;
+    }
+    if (passwordFormData.newPassword.length < 6) {
+      showAlert('Password must be at least 6 characters.', 'error');
+      return;
+    }
+    try {
+      await changePassword(passwordFormData.currentPassword, passwordFormData.newPassword);
+      showAlert('Password changed successfully!', 'success');
+      setPasswordFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      showAlert(`Password change failed: ${error.message}`, 'error');
     }
   };
 
@@ -97,16 +138,16 @@ function ProfilePage() {
   };
 
   if (!isLoggedIn) {
-    return null; // Or show loading spinner
+    return null;
   }
 
   return (
-    <main className="container">
+    <main className="container" style={{ maxWidth: '800px' }}>
       <div className="auth-card">
         <h2>Your Profile</h2>
         <form id="profile-form" onSubmit={handleProfileSubmit}>
           <div className="input-group">
-            <label htmlFor="profile-name">Name</label>
+            <label htmlFor="name">Name</label>
             <input
               type="text"
               id="name"
@@ -116,26 +157,108 @@ function ProfilePage() {
             />
           </div>
           <div className="input-group">
-            <label htmlFor="profile-email">Email</label>
+            <label htmlFor="email">Email</label>
             <input
               type="email"
               id="email"
               value={profileFormData.email}
-              disabled // Email is disabled as per original HTML
+              disabled
             />
           </div>
           <div className="input-group">
-            <label htmlFor="profile-mobile">Mobile</label>
+            <label htmlFor="mobile_no">Mobile</label>
             <input
               type="tel"
               id="mobile_no"
               value={profileFormData.mobile_no}
-              onChange={handleProfileChange}
+              disabled
             />
           </div>
-          <button type="submit" className="button">Update Profile</button>
+
+          <div className="input-group">
+            <label htmlFor="user_type">User Type</label>
+            <select
+              id="user_type"
+              value={profileFormData.user_type}
+              onChange={handleProfileChange}
+              required
+            >
+              <option value="student">Student</option>
+              <option value="faculty">Faculty</option>
+              <option value="visitor">Visitor</option>
+              <option value="staff">Staff</option>
+            </select>
+          </div>
+
+          {profileFormData.user_type === 'student' && (
+            <div className="input-group">
+              <label htmlFor="student_id">Student ID</label>
+              <input
+                type="text"
+                id="student_id"
+                placeholder="e.g. STU12345"
+                value={profileFormData.student_id}
+                onChange={handleProfileChange}
+                required
+              />
+            </div>
+          )}
+
+          {profileFormData.user_type === 'visitor' && (
+            <div className="input-group">
+              <label htmlFor="address">Address</label>
+              <input
+                type="text"
+                id="address"
+                placeholder="Your city/locality"
+                value={profileFormData.address}
+                onChange={handleProfileChange}
+                required
+              />
+            </div>
+          )}
+
+          <button type="submit" className="button auth-submit-btn">Update Profile</button>
         </form>
       </div>
+
+      <div className="auth-card" style={{ marginTop: '2rem' }}>
+        <h2>Change Password</h2>
+        <form onSubmit={handlePasswordSubmit}>
+          <div className="input-group">
+            <label htmlFor="currentPassword">Current Password</label>
+            <input
+              type="password"
+              id="currentPassword"
+              value={passwordFormData.currentPassword}
+              onChange={handlePasswordChange}
+              required
+            />
+          </div>
+          <div className="input-group">
+            <label htmlFor="newPassword">New Password</label>
+            <input
+              type="password"
+              id="newPassword"
+              value={passwordFormData.newPassword}
+              onChange={handlePasswordChange}
+              required
+            />
+          </div>
+          <div className="input-group">
+            <label htmlFor="confirmPassword">Confirm New Password</label>
+            <input
+              type="password"
+              id="confirmPassword"
+              value={passwordFormData.confirmPassword}
+              onChange={handlePasswordChange}
+              required
+            />
+          </div>
+          <button type="submit" className="button auth-submit-btn">Change Password</button>
+        </form>
+      </div>
+
       <div className="auth-card" style={{ marginTop: '2rem' }}>
         <h3>Submit Feedback</h3>
         <form id="feedback-form" onSubmit={handleFeedbackSubmit}>

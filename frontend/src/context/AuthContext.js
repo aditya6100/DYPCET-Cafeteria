@@ -83,9 +83,21 @@ export const AuthProvider = ({ children }) => {
       user_type: updatedUser.user_type ?? current.user_type,
       mobile_no: updatedUser.mobile_no ?? current.mobile_no,
       address: updatedUser.address ?? current.address,
+      student_id: updatedUser.student_id ?? current.student_id,
     };
     localStorage.setItem('user', JSON.stringify(normalized));
     setUser(normalized);
+  };
+
+  const changePassword = async (currentPassword, newPassword) => {
+    setLoading(true);
+    try {
+      await apiRequest('/auth/change-password', 'PUT', { currentPassword, newPassword });
+      setLoading(false);
+    } catch (error) {
+      setLoading(true);
+      throw error;
+    }
   };
 
   const logout = () => {

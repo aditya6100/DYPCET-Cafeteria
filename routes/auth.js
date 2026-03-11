@@ -317,5 +317,55 @@ module.exports = (config, db) => {
         return res.json({ message: 'Password reset successful. Please log in.' });
     }));
 
+    // @desc    Update user profile details
+    // @route   PUT /api/auth/profile
+    // @access  Private
+    router.put('/profile', protect, asyncHandler(async (req, res) => {
+        const { name, user_type, student_id, address } = req.body;
+        const userId = req.user.id;
+
+        const sql = 'UPDATE users SET name = ?, user_type = ?, student_id = ?, address = ? WHERE id = ?';
+        const params = [name, user_type, student_id || null, address || null, userId];
+
+        await db.query(sql, params);
+
+        // Fetch updated user
+        const updatedUsers = await db.query('SELECT id, name, email, user_type, mobile_no, student_id, address FROM users WHERE id = ?', [userId]);
+        
+        res.json({
+            message: 'Profile updated successfully',
+            user: updatedUsers[0]
+        });
+    }));
+
+    // @desc    Change user password
+    // @route   PUT /api/auth/change-password
+    // @access  Private
+    router.put('/change-password', protect, asyncHandler(async (req, res) => {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user.id;
+
+        if (!currentPassword || !newPassword) {
+            res.status(400);
+            throw new Error('Current and new passwords are required.');
+        }
+
+        const users = await db.query('SELECT password FROM users WHERE id = ?', [userId]);
+        const user = users[0];
+
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            res.status(401);
+            throw new Error('Incorrect current password.');
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
+
+        res.json({ message: 'Password changed successfully.' });
+    }));
+
     return router;
 };
