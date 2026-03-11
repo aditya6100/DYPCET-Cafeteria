@@ -136,6 +136,7 @@ function AdminUsersPage() {
               <select name="user_type" value={newUser.user_type} onChange={handleInputChange}>
                 <option value="staff">Staff</option>
                 <option value="faculty">Faculty</option>
+                <option value="member">Member</option>
                 <option value="admin">Admin</option>
                 <option value="student">Student</option>
               </select>

@@ -4,12 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../hooks/useCart'; // Import useCart hook
 
 function Header() {
-  const { user, isLoggedIn, isAdmin, isFaculty, logout } = useAuth();
+  const { user, isLoggedIn, isAdmin, isFaculty, isMember, logout } = useAuth();
   const { cartCount } = useCart();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Check if user is a canteen committee coordinator
-  const isCanteenCoordinator = user?.email?.endsWith('@member.com');
+  const isCanteenCoordinator = user?.email?.endsWith('@member.com') || isMember;
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);

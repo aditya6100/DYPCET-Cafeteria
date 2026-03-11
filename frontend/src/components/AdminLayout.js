@@ -6,13 +6,13 @@ import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../hooks/useAlert';
 
 function AdminLayout() {
-  const { user, isLoggedIn, isAdmin, isFaculty, logout } = useAuth();
+  const { user, isLoggedIn, isAdmin, isFaculty, isMember, logout } = useAuth();
   const { showAlert } = useAlert();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Check if user is a canteen committee coordinator
-  const isCanteenCoordinator = user?.email?.endsWith('@member.com');
+  const isCanteenCoordinator = user?.email?.endsWith('@member.com') || isMember;
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -27,13 +27,13 @@ function AdminLayout() {
     if (!isLoggedIn) {
       showAlert('Please log in to access this page.', 'error');
       navigate('/login');
-    } else if (!isAdmin && !isFaculty) {
+    } else if (!isAdmin && !isFaculty && !isMember) {
       showAlert('You do not have permission to access this page.', 'error');
-      navigate('/'); // Redirect to home if not admin or faculty
+      navigate('/'); // Redirect to home if not admin or faculty or member
     }
-  }, [isLoggedIn, isAdmin, isFaculty, navigate, showAlert]);
+  }, [isLoggedIn, isAdmin, isFaculty, isMember, navigate, showAlert]);
 
-  if (!isLoggedIn || (!isAdmin && !isFaculty)) {
+  if (!isLoggedIn || (!isAdmin && !isFaculty && !isMember)) {
     return null; // Don't render anything if not authorized, redirect will handle it
   }
 
@@ -44,8 +44,8 @@ function AdminLayout() {
           <button className="sidebar-toggle" onClick={toggleSidebar} aria-label="Toggle sidebar">
             ☰
           </button>
-          <Link to={isAdmin ? '/admin' : '/faculty'} className="header-logo-link" onClick={closeSidebar}>
-            <h1>{isAdmin ? 'Admin Dashboard' : 'Faculty Panel'}</h1>
+          <Link to={isAdmin || isMember ? '/admin' : '/faculty'} className="header-logo-link" onClick={closeSidebar}>
+            <h1>{isAdmin || isMember ? 'Admin Dashboard' : 'Faculty Panel'}</h1>
           </Link>
         </div>
         <div className="admin-header-right">
@@ -61,7 +61,7 @@ function AdminLayout() {
         <aside className={`admin-sidebar ${isSidebarOpen ? 'mobile-open' : ''}`}>
           <nav>
             <ul>
-              {isAdmin && (
+              {(isAdmin || isMember) && (
                 <>
                   <li><NavLink to="/admin/orders" onClick={closeSidebar}>Orders</NavLink></li>
                   <li><NavLink to="/admin/display" onClick={closeSidebar}>Display Board</NavLink></li>

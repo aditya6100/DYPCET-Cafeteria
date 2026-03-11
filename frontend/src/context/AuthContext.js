@@ -110,9 +110,10 @@ export const AuthProvider = ({ children }) => {
   const isLoggedIn = !!user && !!token;
   const isAdmin = user && (user.user_type === 'admin' || user.user_type === 'staff');
   const isFaculty = user && user.user_type === 'faculty';
+  const isMember = user && user.user_type === 'member';
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoggedIn, isAdmin, isFaculty, login, register, updateUser, changePassword, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, isLoggedIn, isAdmin, isFaculty, isMember, login, register, updateUser, changePassword, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

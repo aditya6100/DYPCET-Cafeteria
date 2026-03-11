@@ -185,6 +185,7 @@ function ProfilePage() {
             >
               <option value="student">Student</option>
               <option value="faculty">Faculty</option>
+              <option value="member">Member</option>
               <option value="visitor">Visitor</option>
               <option value="staff">Staff</option>
             </select>
