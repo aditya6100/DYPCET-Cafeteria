@@ -331,6 +331,8 @@ function AdminMenuPage() {
         is_available: newStatus,
       });
       showAlert(newStatus === 0 ? 'Item marked unavailable!' : 'Item marked available!', 'success');
+      // Re-fetch to confirm server sync
+      fetchMenuItems();
     } catch (error) {
       // Revert on error
       setMenuItems(prev => prev.map(item => 
@@ -352,6 +354,8 @@ function AdminMenuPage() {
         today_special: newStatus,
       });
       showAlert(newStatus === 0 ? 'Removed from today special.' : 'Marked as today special!', 'success');
+      // Re-fetch to confirm server sync
+      fetchMenuItems();
     } catch (error) {
       // Revert on error
       setMenuItems(prev => prev.map(item => 
@@ -685,19 +689,19 @@ function AdminMenuPage() {
                       <div className="item-flags">
                         <button
                           type="button"
-                          className={`availability-btn ${item.is_available ? 'available' : 'unavailable'}`}
+                          className={`availability-btn ${Number(item.is_available) === 1 ? 'available' : 'unavailable'}`}
                           onClick={() => handleAvailabilityToggle(item.id, item.is_available)}
-                          title={item.is_available ? 'Click to mark unavailable' : 'Click to mark available'}
+                          title={Number(item.is_available) === 1 ? 'Click to mark unavailable' : 'Click to mark available'}
                         >
-                          <span>{item.is_available ? 'Available' : 'Unavailable'}</span>
+                          <span>{Number(item.is_available) === 1 ? 'Available' : 'Unavailable'}</span>
                         </button>
                         <button
                           type="button"
-                          className={`special-btn ${item.today_special ? 'special-on' : 'special-off'}`}
+                          className={`special-btn ${Number(item.today_special) === 1 ? 'special-on' : 'special-off'}`}
                           onClick={() => handleTodaySpecialToggle(item.id, item.today_special)}
-                          title={item.today_special ? 'Remove from today special' : 'Mark as today special'}
+                          title={Number(item.today_special) === 1 ? 'Remove from today special' : 'Mark as today special'}
                         >
-                          {item.today_special ? 'Today Special' : 'Set Today Special'}
+                          {Number(item.today_special) === 1 ? 'Today Special' : 'Set Today Special'}
                         </button>
                         {item.today_special_start_at && item.today_special_end_at && (
                           <small className="special-schedule-chip">

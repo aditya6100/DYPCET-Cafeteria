@@ -536,12 +536,12 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         if (cost_price !== undefined && cost_price !== '') { fieldsToUpdate.push("cost_price = ?"); params.push(parseFloat(cost_price)); }
         if (is_available !== undefined) {
             fieldsToUpdate.push("is_available = ?");
-            params.push(is_available); // Already coming as 0 or 1 from frontend
+            params.push(Number(is_available)); 
         }
         if (menu_type !== undefined) { fieldsToUpdate.push("menu_type = ?"); params.push(normalizeCategory(menu_type)); }
         if (today_special !== undefined) {
             fieldsToUpdate.push("today_special = ?");
-            params.push(Number(today_special) ? 1 : 0);
+            params.push(Number(today_special));
         }
         if (today_special_start_at !== undefined) {
             fieldsToUpdate.push("today_special_start_at = ?");
@@ -581,12 +581,10 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
         const result = await db.query(sql, params);
 
-        if (result.affectedRows > 0) {
-            res.json({ message: "Menu item updated successfully" });
-        } else {
-            res.status(404);
-            throw new Error("Menu item not found or no changes made");
-        }
+        res.json({ 
+            message: "Menu item updated successfully",
+            changed: result.affectedRows > 0
+        });
     }));
 
     // @desc    Reorder menu items inside one category
