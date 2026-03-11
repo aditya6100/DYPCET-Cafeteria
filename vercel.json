@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://dypcet-cafeteria.onrender.com/api/$1"
+    }
+  ]
+}
+
