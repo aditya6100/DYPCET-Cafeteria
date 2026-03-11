@@ -1,6 +1,6 @@
 // frontend/src/pages/ProfilePage.js
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../hooks/useAlert';
@@ -31,12 +31,32 @@ function ProfilePage() {
     message: '',
   });
 
+  const normalizedUserType = useMemo(
+    () => String(profileFormData.user_type || 'student').trim().toLowerCase(),
+    [profileFormData.user_type]
+  );
+
   useEffect(() => {
     if (!isLoggedIn) {
-      showAlert("Please log in to view your profile.", "error");
+      showAlert('Please log in to view your profile.', 'error');
       navigate('/login');
-      return;
     }
+  }, [isLoggedIn, navigate, showAlert]);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfileFormData({
+      name: user.name || '',
+      email: user.email || '',
+      mobile_no: user.mobile_no || '',
+      user_type: String(user.user_type || 'student').trim().toLowerCase(),
+      student_id: user.student_id || '',
+      address: user.address || '',
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
 
     const fetchUserProfile = async () => {
       try {
@@ -45,7 +65,7 @@ function ProfilePage() {
           name: fullUser.name || '',
           email: fullUser.email || '',
           mobile_no: fullUser.mobile_no || '',
-          user_type: fullUser.user_type || 'student',
+          user_type: String(fullUser.user_type || 'student').trim().toLowerCase(),
           student_id: fullUser.student_id || '',
           address: fullUser.address || '',
         });
@@ -55,20 +75,8 @@ function ProfilePage() {
       }
     };
 
-    if (user) {
-      setProfileFormData({
-        name: user.name || '',
-        email: user.email || '',
-        mobile_no: user.mobile_no || '',
-        user_type: user.user_type || 'student',
-        student_id: user.student_id || '',
-        address: user.address || '',
-      });
-    }
-
     fetchUserProfile();
-
-  }, [isLoggedIn, navigate, showAlert, user, updateUser]);
+  }, [isLoggedIn, showAlert, updateUser]);
 
   const handleProfileChange = (e) => {
     const { id, value } = e.target;
@@ -83,9 +91,9 @@ function ProfilePage() {
     try {
       const response = await apiRequest('/auth/profile', 'PUT', {
         name: profileFormData.name,
-        user_type: profileFormData.user_type,
-        student_id: profileFormData.user_type === 'student' ? profileFormData.student_id : null,
-        address: profileFormData.user_type === 'visitor' ? profileFormData.address : null,
+        user_type: normalizedUserType,
+        student_id: normalizedUserType === 'student' ? profileFormData.student_id : null,
+        address: normalizedUserType === 'visitor' ? profileFormData.address : null,
       });
       updateUser(response.user);
       showAlert('Profile updated successfully!', 'success');
@@ -191,7 +199,7 @@ function ProfilePage() {
             </select>
           </div>
 
-          {profileFormData.user_type === 'student' && (
+          {(normalizedUserType === 'student' || String(profileFormData.student_id || '').trim()) && (
             <div className="input-group">
               <label htmlFor="student_id">Student ID</label>
               <input
@@ -200,12 +208,12 @@ function ProfilePage() {
                 placeholder="e.g. STU12345"
                 value={profileFormData.student_id}
                 onChange={handleProfileChange}
-                required
+                required={normalizedUserType === 'student'}
               />
             </div>
           )}
 
-          {profileFormData.user_type === 'visitor' && (
+          {normalizedUserType === 'visitor' && (
             <div className="input-group">
               <label htmlFor="address">Address</label>
               <input
