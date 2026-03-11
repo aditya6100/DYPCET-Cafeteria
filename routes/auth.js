@@ -129,9 +129,23 @@ module.exports = (config, db) => {
             throw new Error('Please provide name, email, password, user_type, and mobile_no.');
         }
 
+        const normalizedUserType = String(user_type || '').trim().toLowerCase();
+        const normalizedStudentId = String(student_id || '').trim();
+        const normalizedFacultyId = String(faculty_id || '').trim();
+
         if (!/^\d{10}$/.test(mobile_no)) {
             res.status(400);
             throw new Error('Mobile number must be exactly 10 digits.');
+        }
+
+        if (normalizedUserType === 'student' && !normalizedStudentId) {
+            res.status(400);
+            throw new Error('Student ID is required for student accounts.');
+        }
+
+        if (normalizedUserType === 'faculty' && !normalizedFacultyId) {
+            res.status(400);
+            throw new Error('Faculty ID is required for faculty accounts.');
         }
 
         const userExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
@@ -140,13 +154,47 @@ module.exports = (config, db) => {
             throw new Error('User with this email already exists.');
         }
 
+        if (normalizedStudentId) {
+            const studentExists = await db.query('SELECT id FROM users WHERE student_id = ? LIMIT 1', [normalizedStudentId]);
+            if (studentExists.length > 0) {
+                res.status(409);
+                throw new Error('User with this student ID already exists.');
+            }
+        }
+
+        if (normalizedFacultyId) {
+            const facultyExists = await db.query('SELECT id FROM users WHERE faculty_id = ? LIMIT 1', [normalizedFacultyId]);
+            if (facultyExists.length > 0) {
+                res.status(409);
+                throw new Error('User with this faculty ID already exists.');
+            }
+        }
+
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
         const sql = 'INSERT INTO users (name, email, password, user_type, mobile_no, address, student_id, faculty_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-        const params = [name, email, hashedPassword, user_type, mobile_no, address || null, student_id || null, faculty_id || null];
+        const params = [
+            name,
+            email,
+            hashedPassword,
+            normalizedUserType || 'student',
+            String(mobile_no),
+            address || null,
+            normalizedStudentId || null,
+            normalizedFacultyId || null
+        ];
 
-        const result = await db.query(sql, params);
+        let result;
+        try {
+            result = await db.query(sql, params);
+        } catch (error) {
+            if (error.code === 'ER_DUP_ENTRY') {
+                res.status(409);
+                throw new Error('User already exists with the same email/student ID/faculty ID.');
+            }
+            throw error;
+        }
 
         if (result.insertId) {
             res.status(201).json({
