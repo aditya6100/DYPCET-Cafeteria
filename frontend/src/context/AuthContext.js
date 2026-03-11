@@ -42,19 +42,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Send OTP function
-  const sendOtp = async (mobile_no) => {
-    setLoading(true);
-    try {
-      const responseData = await apiRequest('/auth/send-otp', 'POST', { mobile_no });
-      setLoading(false);
-      return responseData;
-    } catch (error) {
-      setLoading(false);
-      throw error;
-    }
-  };
-
   // Register function performs API call
   const register = async (
     name,
@@ -64,8 +51,7 @@ export const AuthProvider = ({ children }) => {
     user_type = 'student',
     student_id = null,
     faculty_id = null,
-    address = null,
-    otp = null
+    address = null
   ) => {
     setLoading(true);
     try {
@@ -77,8 +63,7 @@ export const AuthProvider = ({ children }) => {
         user_type,
         student_id,
         faculty_id,
-        address,
-        otp
+        address
       });
       setLoading(false);
       return responseData;
