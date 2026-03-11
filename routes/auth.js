@@ -15,7 +15,8 @@ module.exports = (config, db) => {
         });
     };
 
-    const ensureResetColumns = async () => {
+    const ensureAuthTables = async () => {
+        // Ensure reset columns
         const columns = await db.query(
             `SELECT COLUMN_NAME
              FROM INFORMATION_SCHEMA.COLUMNS
@@ -29,40 +30,45 @@ module.exports = (config, db) => {
         if (!existing.has('reset_password_expires')) {
             await db.query(`ALTER TABLE users ADD COLUMN reset_password_expires DATETIME NULL`);
         }
+
+        // Ensure otp_verifications table
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS otp_verifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                mobile_no VARCHAR(15) NOT NULL,
+                otp VARCHAR(6) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
     };
 
-    ensureResetColumns()
-        .then(() => console.log('Auth reset columns checked/ready.'))
-        .catch((error) => console.error('Auth reset column setup failed:', error.message));
+    ensureAuthTables()
+        .then(() => console.log('Auth tables checked/ready.'))
+        .catch((error) => console.error('Auth table setup failed:', error.message));
 
-    // ─── Send email via Brevo HTTP API (works on Render free tier) ───
-    const sendEmailViaBrevo = (toEmail, toName, subject, htmlContent, textContent) => {
+    // ─── Send SMS via Fast2SMS ───
+    const sendSmsViaFast2SMS = (mobileNo, otp) => {
         return new Promise((resolve, reject) => {
-            const apiKey = process.env.BREVO_API_KEY;
+            const apiKey = process.env.FAST2SMS_API_KEY;
             if (!apiKey) {
-                return reject(new Error('BREVO_API_KEY environment variable is not set'));
+                return reject(new Error('FAST2SMS_API_KEY environment variable is not set'));
             }
 
             const payload = JSON.stringify({
-                sender: {
-                    name: 'DYPCET Cafeteria Support',
-                    email: 'mahalaxmicanteen.dypcet@gmail.com'
-                },
-                to: [{ email: toEmail, name: toName || toEmail }],
-                subject: subject,
-                htmlContent: htmlContent,
-                textContent: textContent
+                variables_values: otp,
+                route: 'otp',
+                numbers: mobileNo,
             });
 
             const options = {
-                hostname: 'api.brevo.com',
-                path: '/v3/smtp/email',
+                hostname: 'www.fast2sms.com',
+                path: '/dev/bulkV2',
                 method: 'POST',
                 headers: {
-                    'accept': 'application/json',
-                    'api-key': apiKey,
-                    'content-type': 'application/json',
-                    'content-length': Buffer.byteLength(payload)
+                    'authorization': apiKey,
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
                 }
             };
 
@@ -71,17 +77,23 @@ module.exports = (config, db) => {
                 res.on('data', (chunk) => data += chunk);
                 res.on('end', () => {
                     if (res.statusCode >= 200 && res.statusCode < 300) {
-                        console.log(`[BREVO] Email sent successfully to ${toEmail}`);
-                        resolve({ messageId: JSON.parse(data).messageId });
+                        const parsed = JSON.parse(data);
+                        if (parsed.return) {
+                            console.log(`[FAST2SMS] OTP sent successfully to ${mobileNo}`);
+                            resolve(parsed);
+                        } else {
+                            console.error(`[FAST2SMS] Business error: ${data}`);
+                            reject(new Error(`Fast2SMS error: ${parsed.message || 'Unknown error'}`));
+                        }
                     } else {
-                        console.error(`[BREVO] API error ${res.statusCode}: ${data}`);
-                        reject(new Error(`Brevo API error: ${res.statusCode} - ${data}`));
+                        console.error(`[FAST2SMS] API error ${res.statusCode}: ${data}`);
+                        reject(new Error(`Fast2SMS API error: ${res.statusCode}`));
                     }
                 });
             });
 
             req.on('error', (err) => {
-                console.error(`[BREVO] Request error: ${err.message}`);
+                console.error(`[FAST2SMS] Request error: ${err.message}`);
                 reject(err);
             });
 
@@ -90,30 +102,40 @@ module.exports = (config, db) => {
         });
     };
 
-    // @desc    Debug Email Connection
-    // @route   GET /api/auth/debug-smtp
-    router.get('/debug-smtp', asyncHandler(async (req, res) => {
-        const testEmail = req.query.email || 'test@example.com';
-        const apiKey = process.env.BREVO_API_KEY;
+    // @desc    Send OTP for registration
+    // @route   POST /api/auth/send-otp
+    // @access  Public
+    router.post('/send-otp', asyncHandler(async (req, res) => {
+        const { mobile_no } = req.body;
 
-        if (!apiKey) {
-            return res.json({
-                status: 'FAILED',
-                reason: 'BREVO_API_KEY is not set in environment variables'
-            });
+        if (!mobile_no || !/^\d{10}$/.test(mobile_no)) {
+            res.status(400);
+            throw new Error('Please provide a valid 10-digit mobile number.');
         }
 
+        // Check if user with this mobile already exists
+        const userExists = await db.query('SELECT id FROM users WHERE mobile_no = ?', [mobile_no]);
+        if (userExists.length > 0) {
+            res.status(409);
+            throw new Error('User with this mobile number already exists.');
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+        // Save OTP to DB
+        await db.query('DELETE FROM otp_verifications WHERE mobile_no = ?', [mobile_no]);
+        await db.query(
+            'INSERT INTO otp_verifications (mobile_no, otp, expires_at) VALUES (?, ?, ?)',
+            [mobile_no, otp, expiresAt]
+        );
+
         try {
-            await sendEmailViaBrevo(
-                testEmail,
-                'Test User',
-                'SMTP DEBUG TEST - DYPCET Cafeteria',
-                '<p>If you see this, <strong>Brevo HTTP API is working perfectly on Render!</strong></p>',
-                'If you see this, Brevo HTTP API is working perfectly on Render!'
-            );
-            res.json({ status: 'SUCCESS', recipient: testEmail });
-        } catch (err) {
-            res.status(500).json({ status: 'ERROR', message: err.message });
+            await sendSmsViaFast2SMS(mobile_no, otp);
+            res.json({ success: true, message: 'OTP sent successfully.' });
+        } catch (error) {
+            res.status(500);
+            throw new Error(`Failed to send OTP: ${error.message}`);
         }
     }));
 
@@ -121,20 +143,27 @@ module.exports = (config, db) => {
     // @route   POST /api/auth/register
     // @access  Public
     router.post('/register', asyncHandler(async (req, res) => {
-        const { name, email, password, user_type = 'student', mobile_no, address, student_id, faculty_id } = req.body;
+        const { name, email, password, user_type = 'student', mobile_no, address, student_id, faculty_id, otp } = req.body;
 
-        if (!name || !email || !password || !user_type || !mobile_no) {
+        if (!name || !email || !password || !user_type || !mobile_no || !otp) {
             res.status(400);
-            throw new Error('Please provide name, email, password, user_type, and mobile_no.');
+            throw new Error('Please provide name, email, password, user_type, mobile_no, and otp.');
         }
 
-        if (!/^\d{10}$/.test(mobile_no)) {
+        // Verify OTP
+        const otpEntry = await db.query(
+            'SELECT * FROM otp_verifications WHERE mobile_no = ? AND otp = ? AND expires_at > NOW()',
+            [mobile_no, otp]
+        );
+
+        if (otpEntry.length === 0) {
             res.status(400);
-            throw new Error('Mobile number must be exactly 10 digits.');
+            throw new Error('Invalid or expired OTP.');
         }
 
-        const userExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-        if (userExists.length > 0) {
+        // Check if email exists
+        const emailExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        if (emailExists.length > 0) {
             res.status(409);
             throw new Error('User with this email already exists.');
         }
@@ -148,6 +177,9 @@ module.exports = (config, db) => {
         const result = await db.query(sql, params);
 
         if (result.insertId) {
+            // Delete OTP after successful registration
+            await db.query('DELETE FROM otp_verifications WHERE mobile_no = ?', [mobile_no]);
+
             res.status(201).json({
                 message: 'User registered successfully',
                 userId: result.insertId,
