@@ -1,35 +1,35 @@
 // frontend/src/hooks/useAlert.js
 
-import React, { useState, useCallback, useContext, createContext } from 'react';
+import React, { useState, useCallback, useContext, createContext, useRef } from 'react';
 import Alert from '../components/Alert';
 
 const AlertContext = createContext(null);
 
 export const AlertProvider = ({ children }) => {
   const [alert, setAlert] = useState({ message: '', type: 'info' });
-  const [timeoutId, setTimeoutId] = useState(null);
+  const timeoutRef = useRef(null);
 
   const showAlert = useCallback((message, type = 'info') => {
     // Clear any existing timeout to prevent overlapping alerts
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
 
     setAlert({ message, type });
 
-    const id = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       setAlert({ message: '', type: 'info' }); // Clear alert after a delay
+      timeoutRef.current = null;
     }, 4000); // 4 seconds visibility
-    setTimeoutId(id);
-  }, [timeoutId]);
+  }, []);
 
   const handleCloseAlert = useCallback(() => {
     setAlert({ message: '', type: 'info' });
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      setTimeoutId(null);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
-  }, [timeoutId]);
+  }, []);
 
   return (
     <AlertContext.Provider value={{ showAlert }}>

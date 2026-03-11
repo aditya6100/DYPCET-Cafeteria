@@ -320,7 +320,7 @@ function AdminMenuPage() {
   };
 
   const handleAvailabilityToggle = async (itemId, currentStatus) => {
-    const newStatus = currentStatus ? 0 : 1;
+    const newStatus = Number(currentStatus) === 1 ? 0 : 1;
     // Optimistic Update
     setMenuItems(prev => prev.map(item => 
       item.id === itemId ? { ...item, is_available: newStatus } : item
@@ -341,7 +341,7 @@ function AdminMenuPage() {
   };
 
   const handleTodaySpecialToggle = async (itemId, currentStatus) => {
-    const newStatus = currentStatus ? 0 : 1;
+    const newStatus = Number(currentStatus) === 1 ? 0 : 1;
     // Optimistic Update
     setMenuItems(prev => prev.map(item => 
       item.id === itemId ? { ...item, today_special: newStatus } : item
@@ -684,6 +684,7 @@ function AdminMenuPage() {
                       </div>
                       <div className="item-flags">
                         <button
+                          type="button"
                           className={`availability-btn ${item.is_available ? 'available' : 'unavailable'}`}
                           onClick={() => handleAvailabilityToggle(item.id, item.is_available)}
                           title={item.is_available ? 'Click to mark unavailable' : 'Click to mark available'}
@@ -691,6 +692,7 @@ function AdminMenuPage() {
                           <span>{item.is_available ? 'Available' : 'Unavailable'}</span>
                         </button>
                         <button
+                          type="button"
                           className={`special-btn ${item.today_special ? 'special-on' : 'special-off'}`}
                           onClick={() => handleTodaySpecialToggle(item.id, item.today_special)}
                           title={item.today_special ? 'Remove from today special' : 'Mark as today special'}

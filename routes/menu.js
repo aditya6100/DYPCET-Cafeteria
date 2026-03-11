@@ -534,9 +534,15 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         if (name !== undefined) { fieldsToUpdate.push("name = ?"); params.push(name); }
         if (price !== undefined && price !== '') { fieldsToUpdate.push("price = ?"); params.push(parseFloat(price)); }
         if (cost_price !== undefined && cost_price !== '') { fieldsToUpdate.push("cost_price = ?"); params.push(parseFloat(cost_price)); }
-        if (is_available !== undefined) { fieldsToUpdate.push("is_available = ?"); params.push(is_available); }
+        if (is_available !== undefined) {
+            fieldsToUpdate.push("is_available = ?");
+            params.push(is_available); // Already coming as 0 or 1 from frontend
+        }
         if (menu_type !== undefined) { fieldsToUpdate.push("menu_type = ?"); params.push(normalizeCategory(menu_type)); }
-        if (today_special !== undefined) { fieldsToUpdate.push("today_special = ?"); params.push(Number(today_special) ? 1 : 0); }
+        if (today_special !== undefined) {
+            fieldsToUpdate.push("today_special = ?");
+            params.push(Number(today_special) ? 1 : 0);
+        }
         if (today_special_start_at !== undefined) {
             fieldsToUpdate.push("today_special_start_at = ?");
             params.push(toSqlDateTime(today_special_start_at));
