@@ -41,11 +41,6 @@ const NewLoginPage = () => {
             <h3>For Faculty</h3>
             <p>Coordinate with cafeteria staff, view feedback</p>
           </div>
-          <div className="info-item">
-            <div className="info-icon">🌐</div>
-            <h3>For Visitors</h3>
-            <p>Browse menu, check ratings, no account needed</p>
-          </div>
         </div>
       </div>
 
@@ -112,12 +107,6 @@ const NewLoginPage = () => {
               Forgot password?{' '}
               <Link to="/forgot-password" className="auth-link">
                 Reset here
-              </Link>
-            </p>
-            <p>
-              Just browsing?{' '}
-              <Link to="/" className="auth-link">
-                Continue as Visitor
               </Link>
             </p>
           </div>
