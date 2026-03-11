@@ -502,7 +502,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             menu_type,
             today_special,
             today_special_start_at,
-            today_special_end_at
+            today_special_end_at,
+            description
         } = req.body;
         const { id } = req.params;
 

@@ -1169,18 +1169,25 @@ button:hover, .button:hover { background-color: var(--secondary-color); border-c
 
 .menu-item-card.unavailable {
     opacity: 0.7;
-    filter: grayscale(100%);
-    pointer-events: none;
     border: 1px solid #ccc;
 }
 
 .menu-item-card.unavailable .menu-item-image img {
-    filter: grayscale(100%) brightness(0.8);
+    filter: grayscale(100%) brightness(0.85) contrast(0.95);
 }
 
 .menu-item-card.unavailable .unavailable-badge {
     background: #666;
     color: #eee;
+}
+
+.menu-item-card.unavailable .menu-item-details,
+.menu-item-card.unavailable .item-name,
+.menu-item-card.unavailable .item-price,
+.menu-item-card.unavailable .prep-time,
+.menu-item-card.unavailable .best-seller-meta,
+.menu-item-card.unavailable .item-description {
+    color: #555 !important;
 }
 
 .unavailable-badge {
