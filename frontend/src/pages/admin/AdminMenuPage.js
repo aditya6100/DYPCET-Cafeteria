@@ -26,7 +26,7 @@ function AdminMenuPage() {
   const [draggedItemId, setDraggedItemId] = useState(null);
   const [draggedCategory, setDraggedCategory] = useState(null);
   const [availableCategories, setAvailableCategories] = useState(MENU_CATEGORIES);
-  const [activeSection, setActiveSection] = useState('');
+  const [activeSection, setActiveSection] = useState('ALL');
   const [menuNoticeText, setMenuNoticeText] = useState('');
   const [savingNotice, setSavingNotice] = useState(false);
   const [categoryTimings, setCategoryTimings] = useState({});
@@ -104,24 +104,24 @@ function AdminMenuPage() {
   const groupedMenuItems = useMemo(() => {
     return filteredItems.reduce((acc, item) => {
       const category = item.menu_type || 'REGULAR';
+      
+      // Filter by active section if not ALL
+      if (activeSection !== 'ALL' && category !== activeSection) {
+        return acc;
+      }
+
       if (!acc[category]) {
         acc[category] = [];
       }
       acc[category].push(item);
       return acc;
     }, {});
-  }, [filteredItems]);
+  }, [filteredItems, activeSection]);
 
-  const sectionCategories = useMemo(
-    () => Object.keys(groupedMenuItems).sort(),
-    [groupedMenuItems]
-  );
-
-  useEffect(() => {
-    if (!activeSection && sectionCategories.length > 0) {
-      setActiveSection(sectionCategories[0]);
-    }
-  }, [activeSection, sectionCategories]);
+  const sectionCategories = useMemo(() => {
+    const categories = Array.from(new Set(menuItems.map(item => item.menu_type || 'REGULAR'))).sort();
+    return ['ALL', ...categories];
+  }, [menuItems]);
 
   useEffect(() => {
     if (currentEditItem) {
@@ -529,10 +529,7 @@ function AdminMenuPage() {
 
   const jumpToSection = (category) => {
     setActiveSection(category);
-    const el = document.getElementById(`admin-category-${category}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (loading) {
@@ -646,7 +643,7 @@ function AdminMenuPage() {
                 className={`admin-section-btn ${activeSection === category ? 'active' : ''}`}
                 onClick={() => jumpToSection(category)}
               >
-                {CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' ')}
+                {category === 'ALL' ? 'All Sections' : (CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' '))}
               </button>
             ))}
           </aside>
@@ -667,7 +664,7 @@ function AdminMenuPage() {
                     <div
                       key={item.id}
                       className={`menu-item-row ${!item.is_available ? 'unavailable' : ''}`}
-                      draggable={!String(searchTerm || '').trim()}
+                      draggable={!String(searchTerm || '').trim() && activeSection === 'ALL'}
                       onDragStart={(e) => handleDragStart(e, item)}
                       onDragEnd={handleDragEnd}
                       onDragOver={handleDragOver}
