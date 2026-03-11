@@ -73,12 +73,14 @@ function AdminLayout() {
                       <li><NavLink to="/admin/feedback" onClick={closeSidebar}>Feedback</NavLink></li>
                     </>
                   )}
+                  <li><NavLink to="/profile" onClick={closeSidebar}>My Profile</NavLink></li>
                 </>
               )}
               {isFaculty && (
                 <>
                   <li><NavLink to="/faculty" onClick={closeSidebar}>Dashboard</NavLink></li>
                   <li><NavLink to="/faculty/analytics" onClick={closeSidebar}>Analytics</NavLink></li>
+                  <li><NavLink to="/profile" onClick={closeSidebar}>My Profile</NavLink></li>
                 </>
               )}
             </ul>

@@ -92,6 +92,43 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         res.json(Array.isArray(users) ? users : []);
     }));
 
+    // @desc    Create a new user (Admin only)
+    // @route   POST /api/users
+    // @access  Admin
+    router.post('/', asyncHandler(async (req, res) => {
+        const { name, email, password, user_type, mobile_no, address, student_id, faculty_id } = req.body;
+
+        if (!name || !email || !password || !user_type || !mobile_no) {
+            res.status(400);
+            throw new Error('Please provide name, email, password, user_type, and mobile_no.');
+        }
+
+        // Check if email already exists
+        const userExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        if (userExists.length > 0) {
+            res.status(409);
+            throw new Error('User with this email already exists.');
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const sql = 'INSERT INTO users (name, email, password, user_type, mobile_no, address, student_id, faculty_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+        const params = [name, email, hashedPassword, user_type, mobile_no, address || null, student_id || null, faculty_id || null];
+
+        const result = await db.query(sql, params);
+
+        if (result.insertId) {
+            res.status(201).json({
+                message: 'User created successfully',
+                userId: result.insertId,
+            });
+        } else {
+            res.status(500);
+            throw new Error('Failed to create user.');
+        }
+    }));
+
     // @desc    Get a single user by ID
     // @route   GET /api/users/:id
     // @access  Admin
