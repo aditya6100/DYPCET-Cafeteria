@@ -8,7 +8,6 @@ const NewRegisterPage = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile_no, setMobileNo] = useState('');
-  const [student_id, setStudentId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { register, loading } = useAuth();
@@ -17,8 +16,8 @@ const NewRegisterPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!name || !email || !mobile_no || !student_id || !password) {
+
+    if (!name || !email || !mobile_no || !password) {
       showAlert('Please fill all fields!', 'error');
       return;
     }
@@ -34,8 +33,7 @@ const NewRegisterPage = () => {
         email,
         password,
         mobile_no,
-        'student', // Default user type
-        student_id
+        'student' // Default user type
       );
       showAlert('Registration successful! Please log in.', 'success');
       navigate('/login');
@@ -110,22 +108,7 @@ const NewRegisterPage = () => {
                   maxLength={10}
                   onChange={(e) => setMobileNo(e.target.value.replace(/\D/g, ''))}
                   required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="student_id">Student ID</label>
-              <div className="input-wrapper">
-                <span className="input-icon">ðŸ†”</span>
-                <input
-                  type="text"
-                  id="student_id"
-                  placeholder="EN22166256"
-                  value={student_id}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  required
-                  autoComplete="off"
+                  autoComplete="tel"
                 />
               </div>
             </div>
@@ -141,6 +124,7 @@ const NewRegisterPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -156,6 +140,7 @@ const NewRegisterPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -189,3 +174,4 @@ const NewRegisterPage = () => {
 };
 
 export default NewRegisterPage;
+

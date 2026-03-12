@@ -138,16 +138,6 @@ module.exports = (config, db) => {
             throw new Error('Mobile number must be exactly 10 digits.');
         }
 
-        if (normalizedUserType === 'student' && !normalizedStudentId) {
-            res.status(400);
-            throw new Error('Student ID is required for student accounts.');
-        }
-
-        if (normalizedUserType === 'faculty' && !normalizedFacultyId) {
-            res.status(400);
-            throw new Error('Faculty ID is required for faculty accounts.');
-        }
-
         const userExists = await db.query('SELECT id FROM users WHERE email = ?', [email]);
         if (userExists.length > 0) {
             res.status(409);
