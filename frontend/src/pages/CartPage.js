@@ -237,6 +237,9 @@ function CartPage() {
               {isProcessingPayment ? 'Processing...' : 'Proceed to Payment'}
             </button>
           </div>
+          <p style={{ marginTop: '0.75rem', color: '#b00020', fontSize: '0.9rem' }}>
+            Note: Don&apos;t close or refresh the site until payment confirmation, otherwise the order may not be placed.
+          </p>
         </div>
       )}
     </main>
