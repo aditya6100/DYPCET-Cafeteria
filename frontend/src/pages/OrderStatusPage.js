@@ -1,13 +1,12 @@
 // frontend/src/pages/OrderStatusPage.js
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../hooks/useAlert';
 import apiRequest from '../utils/api';
 import { getToken } from '../utils/auth';
 
-const PREPARING_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const STATUS_POLL_INTERVAL_MS = 10000; // 10 seconds
 
 function OrderStatusPage() {
@@ -18,16 +17,9 @@ function OrderStatusPage() {
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [preparingEndsAt, setPreparingEndsAt] = useState(null);
-  const [now, setNow] = useState(Date.now());
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
   const previousStatusRef = useRef(null);
-
-  const preparingStorageKey = useMemo(
-    () => (orderId ? `order_${orderId}_preparing_started_at` : null),
-    [orderId]
-  );
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -57,22 +49,6 @@ function OrderStatusPage() {
         const currentStatus = data.status;
         const previousStatus = previousStatusRef.current;
 
-        if (currentStatus === 'Preparing') {
-          let preparingStartedAt = Number(localStorage.getItem(preparingStorageKey));
-
-          if (!preparingStartedAt || previousStatus !== 'Preparing') {
-            preparingStartedAt = Date.now();
-            localStorage.setItem(preparingStorageKey, String(preparingStartedAt));
-          }
-
-          setPreparingEndsAt(preparingStartedAt + PREPARING_DURATION_MS);
-        } else {
-          setPreparingEndsAt(null);
-          if (preparingStorageKey) {
-            localStorage.removeItem(preparingStorageKey);
-          }
-        }
-
         if (previousStatus && previousStatus !== currentStatus) {
           showAlert(`Order status updated: ${currentStatus}`, 'info');
         }
@@ -101,15 +77,7 @@ function OrderStatusPage() {
     return () => {
       clearInterval(pollTimer);
     };
-  }, [isLoggedIn, navigate, orderId, preparingStorageKey, showAlert]);
-
-  useEffect(() => {
-    const ticker = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => clearInterval(ticker);
-  }, []);
+  }, [isLoggedIn, navigate, orderId, showAlert]);
 
   if (!isLoggedIn || !orderId) {
     return null;
@@ -128,9 +96,6 @@ function OrderStatusPage() {
     ? 0
     : Math.max(0, Math.min(3, currentStatusIndex));
   const progressPercent = Math.round((normalizedProgressIndex / 3) * 100);
-  const remainingPreparingMs = preparingEndsAt ? Math.max(0, preparingEndsAt - now) : 0;
-  const preparingMinutes = String(Math.floor(remainingPreparingMs / 60000)).padStart(2, '0');
-  const preparingSeconds = String(Math.floor((remainingPreparingMs % 60000) / 1000)).padStart(2, '0');
   const normalizedRefundStatus = (order?.refund_status || 'None').toLowerCase();
   const canRequestRefund = order
     && ['received', 'preparing', 'cancelled'].includes((order.status || '').toLowerCase())
@@ -225,12 +190,7 @@ function OrderStatusPage() {
             {order.status === 'Preparing' && (
               <div className="preparing-countdown-box">
                 <h4>Kitchen is preparing your order</h4>
-                <div className="preparing-countdown-time">{preparingMinutes}:{preparingSeconds}</div>
-                <p>
-                  {remainingPreparingMs > 0
-                    ? 'Estimated time left'
-                    : 'Order should be ready soon. Please watch for status update.'}
-                </p>
+                <p>Order should be ready soon. Please watch for status update.</p>
               </div>
             )}
 
