@@ -109,6 +109,69 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const { protect, admin } = auth;
 
     const normalizeStatus = (status = '') => String(status).trim().toLowerCase();
+
+    const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+    const parseTimeToMinutes = (value) => {
+        if (!value) return null;
+        const [hh = '0', mm = '0'] = String(value).split(':');
+        const h = Number(hh);
+        const m = Number(mm);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+        return (h * 60) + m;
+    };
+    const getNowMinutesInTimeZone = () => {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: APP_TIMEZONE,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).formatToParts(new Date());
+        const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+        const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+        return (hour * 60) + minute;
+    };
+    const isNowWithinWindow = (startMinutes, endMinutes) => {
+        if (startMinutes === null || endMinutes === null) return false;
+        const nowMinutes = getNowMinutesInTimeZone();
+        // Supports overnight windows (e.g. 20:00 to 04:00).
+        if (startMinutes <= endMinutes) {
+            return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+        }
+        return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+    };
+    const ensureOrderingOpen = async (res) => {
+        let settings = null;
+        try {
+            const rows = await db.query(
+                `SELECT setting_value
+                 FROM menu_settings
+                 WHERE setting_key = 'order_pause'
+                 LIMIT 1`
+            );
+            const raw = rows?.[0]?.setting_value;
+            if (raw) {
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                settings = {
+                    enabled: Boolean(parsed?.enabled),
+                    start_time: String(parsed?.start_time || '').slice(0, 5),
+                    end_time: String(parsed?.end_time || '').slice(0, 5),
+                    message: String(parsed?.message || '').trim()
+                };
+            }
+        } catch (_error) {
+            settings = null;
+        }
+
+        if (!settings?.enabled) return;
+
+        const startMinutes = parseTimeToMinutes(settings.start_time);
+        const endMinutes = parseTimeToMinutes(settings.end_time);
+        if (!isNowWithinWindow(startMinutes, endMinutes)) return;
+
+        res.status(403);
+        throw new Error(settings.message || 'Ordering is temporarily paused. Please try again later.');
+    };
+
     const getRefundPolicy = (status) => {
         const normalized = normalizeStatus(status);
         if (normalized === 'received') {
@@ -353,6 +416,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   POST /api/orders
     // @access  Protected
     router.post('/', protect, asyncHandler(async (req, res) => {
+        await ensureOrderingOpen(res);
         const { amount } = req.body;
 
         if (!amount || amount <= 0) {
@@ -384,6 +448,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   POST /api/orders/verify
     // @access  Protected
     router.post('/verify', protect, asyncHandler(async (req, res) => {
+        await ensureOrderingOpen(res);
         const {
             razorpay_order_id,
             razorpay_payment_id,
@@ -458,6 +523,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   POST /api/orders/phonepe/initiate
     // @access  Protected
     router.post('/phonepe/initiate', protect, asyncHandler(async (req, res) => {
+        await ensureOrderingOpen(res);
         if (!isPhonePeConfigured()) {
             res.status(400);
             throw new Error('PhonePe is not configured on the server. Please set PHONEPE_* environment variables.');
@@ -554,6 +620,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   POST /api/orders/phonepe/confirm
     // @access  Protected
     router.post('/phonepe/confirm', protect, asyncHandler(async (req, res) => {
+        await ensureOrderingOpen(res);
         if (!isPhonePeConfigured()) {
             res.status(400);
             throw new Error('PhonePe is not configured on the server.');

@@ -29,6 +29,13 @@ function AdminMenuPage() {
   const [activeSection, setActiveSection] = useState('ALL');
   const [menuNoticeText, setMenuNoticeText] = useState('');
   const [savingNotice, setSavingNotice] = useState(false);
+  const [orderPause, setOrderPause] = useState({
+    enabled: false,
+    start_time: '13:00',
+    end_time: '14:00',
+    message: 'Ordering is temporarily paused. Please try again later.'
+  });
+  const [savingOrderPause, setSavingOrderPause] = useState(false);
   const [categoryTimings, setCategoryTimings] = useState({});
   const [savingCategoryTiming, setSavingCategoryTiming] = useState('');
   const [showTimings, setShowTimings] = useState(false);
@@ -53,11 +60,12 @@ function AdminMenuPage() {
   const fetchMenuItems = useCallback(async () => {
     try {
       setLoading(true);
-      const [itemsData, categoriesData, noticeData, timingData] = await Promise.all([
+      const [itemsData, categoriesData, noticeData, timingData, pauseData] = await Promise.all([
         apiRequest('/menu?t=' + Date.now()),
         apiRequest('/menu/categories').catch(() => []),
         apiRequest('/menu/notice').catch(() => ({ notice: '' })),
-        apiRequest('/menu/category-timings').catch(() => [])
+        apiRequest('/menu/category-timings').catch(() => []),
+        apiRequest('/menu/order-pause').catch(() => ({}))
       ]);
 
       if (!Array.isArray(itemsData)) {
@@ -68,6 +76,12 @@ function AdminMenuPage() {
       const categorySet = new Set([...MENU_CATEGORIES, ...(Array.isArray(categoriesData) ? categoriesData : [])]);
       setAvailableCategories(Array.from(categorySet));
       setMenuNoticeText(String(noticeData?.notice || ''));
+      setOrderPause({
+        enabled: Boolean(pauseData?.enabled),
+        start_time: String(pauseData?.start_time || '13:00').slice(0, 5),
+        end_time: String(pauseData?.end_time || '14:00').slice(0, 5),
+        message: String(pauseData?.message || 'Ordering is temporarily paused. Please try again later.')
+      });
 
       const timingMap = {};
       (Array.isArray(timingData) ? timingData : []).forEach((row) => {
@@ -204,6 +218,25 @@ function AdminMenuPage() {
       showAlert(`Could not update menu notice: ${error.message}`, 'error');
     } finally {
       setSavingNotice(false);
+    }
+  };
+
+  const handleSaveOrderPause = async () => {
+    try {
+      setSavingOrderPause(true);
+      const payload = {
+        enabled: Boolean(orderPause.enabled),
+        start_time: String(orderPause.start_time || '13:00').slice(0, 5),
+        end_time: String(orderPause.end_time || '14:00').slice(0, 5),
+        message: String(orderPause.message || '').trim()
+      };
+      await apiRequest('/menu/order-pause', 'PUT', payload);
+      showAlert('Order pause settings updated.', 'success');
+      await fetchMenuItems();
+    } catch (error) {
+      showAlert(`Could not update order pause settings: ${error.message}`, 'error');
+    } finally {
+      setSavingOrderPause(false);
     }
   };
 
@@ -589,6 +622,45 @@ function AdminMenuPage() {
           <button className="button" onClick={handleSaveMenuNotice} disabled={savingNotice}>
             {savingNotice ? 'Saving...' : 'Save Notice'}
           </button>
+        </div>
+      </div>
+
+      <div className="menu-notice-admin-card">
+        <label>Order Pause Window (Stops ordering during selected time)</label>
+        <div className="menu-notice-admin-row" style={{ flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(orderPause.enabled)}
+              onChange={(e) => setOrderPause((prev) => ({ ...prev, enabled: e.target.checked }))}
+            />
+            Enable pause
+          </label>
+          <input
+            type="time"
+            value={String(orderPause.start_time || '').slice(0, 5)}
+            onChange={(e) => setOrderPause((prev) => ({ ...prev, start_time: e.target.value }))}
+            disabled={!orderPause.enabled}
+          />
+          <input
+            type="time"
+            value={String(orderPause.end_time || '').slice(0, 5)}
+            onChange={(e) => setOrderPause((prev) => ({ ...prev, end_time: e.target.value }))}
+            disabled={!orderPause.enabled}
+          />
+          <input
+            type="text"
+            value={String(orderPause.message || '')}
+            onChange={(e) => setOrderPause((prev) => ({ ...prev, message: e.target.value }))}
+            placeholder="Message shown to users"
+            style={{ flex: '1 1 260px', minWidth: '220px' }}
+          />
+          <button className="button" onClick={handleSaveOrderPause} disabled={savingOrderPause}>
+            {savingOrderPause ? 'Saving...' : 'Save Pause'}
+          </button>
+        </div>
+        <div style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
+          Example: Enable pause from 13:00 to 14:00 to stop orders during peak hours.
         </div>
       </div>
 

@@ -38,6 +38,7 @@ function CartPage() {
 
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [orderInstruction, setOrderInstruction] = useState('');
+  const [orderPause, setOrderPause] = useState({ is_paused_now: false, message: '' });
 
   const totalAmountWithTaxes = cartTotal;
 
@@ -47,6 +48,22 @@ function CartPage() {
       navigate('/login');
     }
   }, [isLoggedIn, navigate, showAlert]);
+
+  useEffect(() => {
+    const fetchPause = async () => {
+      try {
+        const data = await apiRequest('/menu/order-pause');
+        setOrderPause({
+          is_paused_now: Boolean(data?.is_paused_now),
+          message: String(data?.message || '').trim()
+        });
+      } catch (_error) {
+        setOrderPause({ is_paused_now: false, message: '' });
+      }
+    };
+
+    fetchPause();
+  }, []);
 
   const changeQuantityBy = (item, delta) => {
     const next = Number(item.quantity || 0) + delta;
@@ -61,6 +78,16 @@ function CartPage() {
     if (cart.length === 0) {
       showAlert('Your cart is empty!', 'error');
       return;
+    }
+
+    try {
+      const pause = await apiRequest('/menu/order-pause');
+      if (pause?.is_paused_now) {
+        showAlert(String(pause?.message || 'Ordering is temporarily paused. Please try again later.'), 'error');
+        return;
+      }
+    } catch (_error) {
+      // If pause settings cannot be fetched, continue and let the server validate.
     }
 
     const instructionInput = window.prompt(
@@ -232,11 +259,16 @@ function CartPage() {
               id="checkout-btn"
               className="button"
               onClick={handlePayment}
-              disabled={isProcessingPayment}
+              disabled={isProcessingPayment || Boolean(orderPause?.is_paused_now)}
             >
-              {isProcessingPayment ? 'Processing...' : 'Proceed to Payment'}
+              {orderPause?.is_paused_now ? 'Ordering Paused' : (isProcessingPayment ? 'Processing...' : 'Proceed to Payment')}
             </button>
           </div>
+          {orderPause?.is_paused_now && String(orderPause?.message || '').trim() && (
+            <p style={{ marginTop: '0.75rem', color: '#b00020', fontSize: '0.9rem' }}>
+              {orderPause.message}
+            </p>
+          )}
           <p style={{ marginTop: '0.75rem', color: '#b00020', fontSize: '0.9rem' }}>
             Note: Don&apos;t close or refresh the site until payment confirmation, otherwise the order may not be placed.
           </p>

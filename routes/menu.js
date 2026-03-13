@@ -33,6 +33,71 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
     };
 
+    const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+    const parseTimeToMinutes = (value) => {
+        if (!value) return null;
+        const [hh = '0', mm = '0'] = String(value).split(':');
+        const h = Number(hh);
+        const m = Number(mm);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+        return (h * 60) + m;
+    };
+    const getNowMinutesInTimeZone = () => {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: APP_TIMEZONE,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).formatToParts(new Date());
+        const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+        const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+        return (hour * 60) + minute;
+    };
+    const isNowWithinWindow = (startMinutes, endMinutes) => {
+        if (startMinutes === null || endMinutes === null) return false;
+        const nowMinutes = getNowMinutesInTimeZone();
+        // Supports overnight windows (e.g. 20:00 to 04:00).
+        if (startMinutes <= endMinutes) {
+            return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+        }
+        return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+    };
+    const getOrderPauseSettings = async () => {
+        const rows = await db.query(
+            `SELECT setting_value
+             FROM menu_settings
+             WHERE setting_key = 'order_pause'
+             LIMIT 1`
+        );
+
+        const raw = rows?.[0]?.setting_value;
+        if (!raw) {
+            return {
+                enabled: false,
+                start_time: '13:00',
+                end_time: '14:00',
+                message: 'Ordering is temporarily paused. Please try again later.'
+            };
+        }
+
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return {
+                enabled: Boolean(parsed?.enabled),
+                start_time: String(parsed?.start_time || '13:00').slice(0, 5),
+                end_time: String(parsed?.end_time || '14:00').slice(0, 5),
+                message: String(parsed?.message || 'Ordering is temporarily paused. Please try again later.').slice(0, 200)
+            };
+        } catch (_error) {
+            return {
+                enabled: false,
+                start_time: '13:00',
+                end_time: '14:00',
+                message: 'Ordering is temporarily paused. Please try again later.'
+            };
+        }
+    };
+
     const ensureMenuColumns = async () => {
         await db.query(
             `CREATE TABLE IF NOT EXISTS menu_categories (
@@ -125,6 +190,14 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         await db.query(
             `INSERT IGNORE INTO menu_settings (setting_key, setting_value)
              VALUES ('menu_notice', 'Dinner and many menu items are available only after 12:00 PM.')`
+        );
+
+        await db.query(
+            `INSERT IGNORE INTO menu_settings (setting_key, setting_value)
+             VALUES (
+                'order_pause',
+                '{"enabled":false,"start_time":"13:00","end_time":"14:00","message":"Ordering is temporarily paused. Please try again later."}'
+             )`
         );
 
         await db.query(
@@ -421,6 +494,52 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         );
 
         res.json({ message: 'Menu notice updated successfully.' });
+    }));
+
+    // @desc    Fetch order pause window (time-based ordering block)
+    // @route   GET /api/menu/order-pause
+    // @access  Public
+    router.get('/order-pause', asyncHandler(async (_req, res) => {
+        const settings = await getOrderPauseSettings();
+        const startMinutes = parseTimeToMinutes(settings.start_time);
+        const endMinutes = parseTimeToMinutes(settings.end_time);
+        const isPausedNow = Boolean(settings.enabled) && isNowWithinWindow(startMinutes, endMinutes);
+        res.json({
+            ...settings,
+            is_paused_now: isPausedNow,
+            timezone: APP_TIMEZONE
+        });
+    }));
+
+    // @desc    Update order pause window
+    // @route   PUT /api/menu/order-pause
+    // @access  Admin
+    router.put('/order-pause', protect, admin, asyncHandler(async (req, res) => {
+        const enabled = Boolean(req.body?.enabled);
+        const start_time = String(req.body?.start_time || '13:00').slice(0, 5);
+        const end_time = String(req.body?.end_time || '14:00').slice(0, 5);
+        const message = String(req.body?.message || '').trim().slice(0, 200)
+            || 'Ordering is temporarily paused. Please try again later.';
+
+        const payload = JSON.stringify({ enabled, start_time, end_time, message });
+
+        await db.query(
+            `INSERT INTO menu_settings (setting_key, setting_value)
+             VALUES ('order_pause', ?)
+             ON DUPLICATE KEY UPDATE
+                setting_value = VALUES(setting_value),
+                updated_at = CURRENT_TIMESTAMP`,
+            [payload]
+        );
+
+        const startMinutes = parseTimeToMinutes(start_time);
+        const endMinutes = parseTimeToMinutes(end_time);
+        const isPausedNow = Boolean(enabled) && isNowWithinWindow(startMinutes, endMinutes);
+
+        res.json({
+            message: 'Order pause settings updated successfully.',
+            settings: { enabled, start_time, end_time, message, is_paused_now: isPausedNow, timezone: APP_TIMEZONE }
+        });
     }));
 
     // @desc    Fetch menu categories
