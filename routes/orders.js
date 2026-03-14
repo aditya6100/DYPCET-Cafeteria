@@ -549,16 +549,19 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
         try {
             const result = await db.query(sql, params);
-            if (result && result.insertId) {
+            const insertId = result?.insertId ?? result?.[0]?.insertId ?? null;
+            if (insertId) {
                 res.status(201).json({
                     message: "Order placed successfully!",
-                    orderId: result.insertId
+                    orderId: insertId
                 });
             } else {
+                res.status(500);
                 throw new Error("Database insertion failed.");
             }
         } catch (dbError) {
             console.error("!!! DATABASE ERROR during order insertion:", dbError);
+            res.status(500);
             throw new Error("Failed to save order to the database due to a server error.");
         }
     }));
@@ -645,9 +648,14 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         ];
 
         const result = await db.query(sql, params);
+        const insertId = result?.insertId ?? result?.[0]?.insertId ?? null;
+        if (!insertId) {
+            res.status(500);
+            throw new Error('Failed to create offline order.');
+        }
         res.status(201).json({
             message: 'Offline order created. Please pay at the counter to start preparation.',
-            orderId: result.insertId,
+            orderId: insertId,
             guestAccessToken: guestAccessToken || null
         });
     }));
