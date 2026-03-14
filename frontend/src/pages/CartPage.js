@@ -263,10 +263,6 @@ function CartPage() {
     setShowCashDetailsModal(false);
   };
 
-  if (!isLoggedIn) {
-    return null;
-  }
-
   return (
     <main className="container">
       <h2>Your Cart</h2>

@@ -15,8 +15,6 @@ function OrderHistoryPage() {
 
   useEffect(() => {
     if (!isLoggedIn) {
-      showAlert("Please log in to view your order history.", "error");
-      navigate('/login');
       return;
     }
 
@@ -36,7 +34,18 @@ function OrderHistoryPage() {
   }, [isLoggedIn, navigate, showAlert]);
 
   if (!isLoggedIn) {
-    return null; // Or show a loading spinner/message until redirect
+    return (
+      <main className="container">
+        <h2>Your Order History</h2>
+        <p style={{ color: '#666' }}>
+          Please log in to view your order history.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <Link to="/login" className="button">Login</Link>
+          <Link to="/menu-items" className="button button-small">Back to Menu</Link>
+        </div>
+      </main>
+    );
   }
 
   return (
