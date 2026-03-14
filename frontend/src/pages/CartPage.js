@@ -418,7 +418,7 @@ function CartPage() {
         </div>
       )}
 
-      {!isLoggedIn && paymentMode === 'cash' && showCashDetailsModal && (
+      {!isLoggedIn && showCashDetailsModal && (
         <div className="cash-modal-overlay" onClick={handleCashModalCancel}>
           <div className="cash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cash-modal-header">
