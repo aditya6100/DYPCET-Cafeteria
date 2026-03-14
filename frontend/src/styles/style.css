@@ -2040,6 +2040,119 @@ footer { text-align: center; padding: 2rem 0; color: var(--text-secondary); }
     box-shadow: 0 0 0 3px rgba(10, 35, 66, 0.12);
 }
 
+.cash-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 35, 66, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 2000;
+}
+
+.cash-modal {
+    width: min(520px, 94vw);
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(15, 30, 60, 0.08);
+    overflow: hidden;
+}
+
+.cash-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    background: linear-gradient(135deg, #f8fbff 0%, #f1f6ff 100%);
+    border-bottom: 1px solid #e2e8f2;
+}
+
+.cash-modal-header h3 {
+    margin: 0;
+    font-size: 1.12rem;
+    color: #0a2342;
+}
+
+.cash-modal-header p {
+    margin: 0.25rem 0 0 0;
+    color: #5d7390;
+    font-size: 0.92rem;
+}
+
+.cash-modal-close {
+    border: none;
+    background: transparent;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #0a2342;
+    padding: 0 0.2rem;
+}
+
+.cash-modal-body {
+    padding: 1rem 1.1rem 0.25rem 1.1rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.cash-modal-label {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1b3c61;
+    margin-top: 0.35rem;
+}
+
+.cash-modal-input {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    border: 1px solid #d3dbe8;
+    border-radius: 10px;
+    padding: 0.65rem 0.7rem;
+    background: #ffffff;
+}
+
+.cash-modal-input:focus-within {
+    border-color: #0a2342;
+    box-shadow: 0 0 0 3px rgba(10, 35, 66, 0.12);
+}
+
+.cash-modal-icon {
+    width: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cash-modal-input input {
+    width: 100%;
+    border: none;
+    outline: none;
+    font-size: 0.98rem;
+    font-family: var(--font-family);
+    background: transparent;
+}
+
+.cash-modal-note {
+    margin-top: 0.65rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 10px;
+    background: #fff7d6;
+    color: #5a3f00;
+    border: 1px solid rgba(255, 193, 7, 0.35);
+    font-size: 0.9rem;
+}
+
+.cash-modal-actions {
+    display: flex;
+    gap: 0.65rem;
+    justify-content: flex-end;
+    padding: 0.95rem 1.1rem 1rem 1.1rem;
+}
+
 @media (max-width: 700px) {
     .cart-summary-actions {
         flex-direction: column;

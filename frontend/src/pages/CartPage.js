@@ -42,6 +42,7 @@ function CartPage() {
   const [paymentMode, setPaymentMode] = useState('online'); // online | cash
   const [guestName, setGuestName] = useState('');
   const [guestMobile, setGuestMobile] = useState('');
+  const [showCashDetailsModal, setShowCashDetailsModal] = useState(false);
 
   const totalAmountWithTaxes = cartTotal;
 
@@ -114,7 +115,7 @@ function CartPage() {
           navigate('/profile');
           return;
         }
-        showAlert('Please enter your name for cash orders.', 'error');
+        setShowCashDetailsModal(true);
         return;
       }
       if (!/^\d{10}$/.test(mobileDigits)) {
@@ -123,7 +124,7 @@ function CartPage() {
           navigate('/profile');
           return;
         }
-        showAlert('Please enter a valid 10-digit mobile number for cash orders.', 'error');
+        setShowCashDetailsModal(true);
         return;
       }
 
@@ -228,6 +229,40 @@ function CartPage() {
     }
   };
 
+  const handleSelectPaymentMode = (nextMode) => {
+    setPaymentMode(nextMode);
+    if (nextMode !== 'cash') {
+      setShowCashDetailsModal(false);
+      return;
+    }
+    if (!isLoggedIn) {
+      setShowCashDetailsModal(true);
+    }
+  };
+
+  const handleCashModalCancel = () => {
+    setShowCashDetailsModal(false);
+    setGuestName('');
+    setGuestMobile('');
+    setPaymentMode('online');
+  };
+
+  const handleCashModalContinue = () => {
+    const name = String(guestName || '').trim();
+    const mobile = String(guestMobile || '').replace(/\D/g, '').slice(-10);
+
+    if (!name) {
+      showAlert('Please enter your name.', 'error');
+      return;
+    }
+    if (!/^\d{10}$/.test(mobile)) {
+      showAlert('Please enter a valid 10-digit mobile number.', 'error');
+      return;
+    }
+    setGuestMobile(mobile);
+    setShowCashDetailsModal(false);
+  };
+
   if (!isLoggedIn) {
     return null;
   }
@@ -321,7 +356,7 @@ function CartPage() {
                   name="paymentMode"
                   value="online"
                   checked={paymentMode === 'online'}
-                  onChange={() => setPaymentMode('online')}
+                  onChange={() => handleSelectPaymentMode('online')}
                 />
                 Online Payment
               </label>
@@ -331,28 +366,16 @@ function CartPage() {
                   name="paymentMode"
                   value="cash"
                   checked={paymentMode === 'cash'}
-                  onChange={() => setPaymentMode('cash')}
+                  onChange={() => handleSelectPaymentMode('cash')}
                 />
                 Cash (Pay at counter)
               </label>
             </div>
 
             {!isLoggedIn && paymentMode === 'cash' && (
-              <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  placeholder="Your name"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                />
-                <input
-                  type="tel"
-                  placeholder="10-digit mobile number"
-                  value={guestMobile}
-                  maxLength={10}
-                  onChange={(e) => setGuestMobile(e.target.value.replace(/\\D/g, ''))}
-                />
-              </div>
+              <p style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
+                You will be asked for Name and Mobile number (cash order details).
+              </p>
             )}
 
             {paymentMode === 'online' && !isLoggedIn && (
@@ -382,6 +405,64 @@ function CartPage() {
           <p style={{ marginTop: '0.75rem', color: '#b00020', fontSize: '0.9rem' }}>
             Note: Don&apos;t close or refresh the site until payment confirmation, otherwise the order may not be placed.
           </p>
+        </div>
+      )}
+
+      {!isLoggedIn && paymentMode === 'cash' && showCashDetailsModal && (
+        <div className="cash-modal-overlay" onClick={handleCashModalCancel}>
+          <div className="cash-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="cash-modal-header">
+              <div>
+                <h3>Cash Order Details</h3>
+                <p>Enter your details to place an offline cash order.</p>
+              </div>
+              <button type="button" className="cash-modal-close" onClick={handleCashModalCancel}>
+                ×
+              </button>
+            </div>
+
+            <div className="cash-modal-body">
+              <label className="cash-modal-label" htmlFor="cash_guest_name">Full Name</label>
+              <div className="cash-modal-input">
+                <span className="cash-modal-icon">👤</span>
+                <input
+                  id="cash_guest_name"
+                  type="text"
+                  placeholder="Your name"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  autoComplete="name"
+                />
+              </div>
+
+              <label className="cash-modal-label" htmlFor="cash_guest_mobile">Mobile Number</label>
+              <div className="cash-modal-input">
+                <span className="cash-modal-icon">📱</span>
+                <input
+                  id="cash_guest_mobile"
+                  type="tel"
+                  placeholder="10-digit mobile number"
+                  value={guestMobile}
+                  maxLength={10}
+                  onChange={(e) => setGuestMobile(e.target.value.replace(/\\D/g, ''))}
+                  autoComplete="tel"
+                />
+              </div>
+
+              <div className="cash-modal-note">
+                Note: Don&apos;t close or refresh the site until confirmation, otherwise the order may not be placed.
+              </div>
+            </div>
+
+            <div className="cash-modal-actions">
+              <button type="button" className="button danger-btn" onClick={handleCashModalCancel}>
+                Cancel
+              </button>
+              <button type="button" className="button" onClick={handleCashModalContinue}>
+                Continue
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
