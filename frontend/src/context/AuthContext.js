@@ -26,6 +26,28 @@ export const AuthProvider = ({ children }) => {
     setLoading(false); // Set loading to false after initial sync
   }, [user, token]);
 
+  useEffect(() => {
+    // Refresh user profile (mobile_no, etc.) when a token exists.
+    // This prevents stale sessions from missing fields required for ordering.
+    if (!token) return;
+
+    let cancelled = false;
+    const refreshProfile = async () => {
+      try {
+        const fullUser = await apiRequest('/users/profile');
+        if (cancelled) return;
+        updateUser(fullUser);
+      } catch (_error) {
+        // Ignore: keep local session and allow retry later.
+      }
+    };
+
+    refreshProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   // Login function now performs API call
   const login = async (identifier, password) => {
     setLoading(true);

@@ -150,7 +150,7 @@ function CartPage() {
            navigate(`/status/${result.orderId}${isLoggedIn ? '' : '?guest=1'}`);
            return;
          }
-        throw new Error('Could not create offline order.');
+        throw new Error(result?.message || 'Could not create offline order.');
       } catch (error) {
         showAlert(`Could not create offline order: ${error.message}`, 'error');
       } finally {
