@@ -46,6 +46,35 @@ module.exports = (config, db) => { // Accept config and a shared db instance
         }
     });
 
+    // Middleware to optionally attach a user when a valid token is present.
+    // Unlike `protect`, it does not require authentication.
+    const optionalProtect = asyncHandler(async (req, _res, next) => {
+        const header = req.headers.authorization || '';
+        if (!header.startsWith('Bearer ')) {
+            req.user = null;
+            return next();
+        }
+
+        const token = header.split(' ')[1];
+        if (!token) {
+            req.user = null;
+            return next();
+        }
+
+        try {
+            const decoded = jwt.verify(token, config.jwt.secret);
+            const users = await db.query(
+                "SELECT id, name, email, user_type, mobile_no, address, student_id, faculty_id FROM users WHERE id = ?",
+                [decoded.id]
+            );
+            req.user = users?.[0] || null;
+        } catch (_error) {
+            req.user = null;
+        }
+
+        return next();
+    });
+
 
     // Middleware to check for admin users
     const admin = asyncHandler((req, res, next) => {
@@ -58,5 +87,5 @@ module.exports = (config, db) => { // Accept config and a shared db instance
         }
     });
 
-    return { protect, admin };
+    return { protect, optionalProtect, admin };
 };

@@ -79,10 +79,12 @@ function ProfilePage() {
   }, [isLoggedIn, showAlert, updateUser]);
 
   const handleProfileChange = (e) => {
-    const { id, value } = e.target;
+    const { id, name, value } = e.target;
+    const key = id || name;
+    if (!key) return;
     setProfileFormData((prevData) => ({
       ...prevData,
-      [id]: value,
+      [key]: value,
     }));
   };
 

@@ -35,10 +35,13 @@ function AdminOrdersPage() {
     }
 
     if (search.trim()) {
+      const needle = search.toLowerCase();
       filtered = filtered.filter(o =>
         o.id.toString().includes(search) ||
-        (o.user_name && o.user_name.toLowerCase().includes(search.toLowerCase())) ||
-        (o.user_email && o.user_email.toLowerCase().includes(search.toLowerCase()))
+        (o.user_name && o.user_name.toLowerCase().includes(needle)) ||
+        (o.user_email && o.user_email.toLowerCase().includes(needle)) ||
+        (o.customer_name && o.customer_name.toLowerCase().includes(needle)) ||
+        (o.customer_mobile && String(o.customer_mobile).includes(search))
       );
     }
 
@@ -66,7 +69,7 @@ function AdminOrdersPage() {
 
       const totalOrders = data.length;
       const pendingOrders = data.filter(
-        (o) => o.status === 'pending' || o.status === 'Received' || o.status === 'Preparing'
+        (o) => o.status === 'pending' || o.status === 'Awaiting Payment' || o.status === 'Received' || o.status === 'Preparing' || o.status === 'Ready'
       ).length;
       const completedOrders = data.filter(
         (o) => o.status === 'completed' || o.status === 'Completed'
@@ -104,6 +107,17 @@ function AdminOrdersPage() {
       setSelectedOrder(null);
     } catch (error) {
       showAlert(`Update failed: ${error.message}`, 'error');
+    }
+  };
+
+  const handleMarkPaid = async (orderId) => {
+    try {
+      await apiRequest(`/orders/${orderId}/mark-paid`, 'PUT');
+      showAlert(`Order #${orderId} marked as paid.`, 'success');
+      fetchOrders();
+      setSelectedOrder(null);
+    } catch (error) {
+      showAlert(`Mark paid failed: ${error.message}`, 'error');
     }
   };
 
@@ -199,7 +213,7 @@ function AdminOrdersPage() {
             <div style="font-size: 14px; letter-spacing: 2px;">*** KITCHEN SLIP ***</div>
             <div class="order-id">#${order.id}</div>
             <div class="order-time">${new Date(order.timestamp).toLocaleString()}</div>
-            <div style="font-size: 14px; margin-top: 5px;">Customer: ${order.user_name || 'N/A'}</div>
+            <div style="font-size: 14px; margin-top: 5px;">Customer: ${order.customer_name || order.user_name || 'N/A'}</div>
           </div>
           
           <div class="items-container">
@@ -241,6 +255,7 @@ function AdminOrdersPage() {
 
   const getStatusColor = (status) => {
     const s = status?.toLowerCase() || '';
+    if (s.includes('awaiting')) return '#ff9800';
     if (s.includes('received') || s.includes('pending')) return '#ffc107';
     if (s.includes('preparing')) return '#17a2b8';
     if (s.includes('ready')) return '#28a745';
@@ -252,12 +267,14 @@ function AdminOrdersPage() {
   const getStatusTextColor = (status) => {
     const s = status?.toLowerCase() || '';
     // Yellow and very light tones need dark text for readability.
+    if (s.includes('awaiting')) return '#1b2430';
     if (s.includes('received') || s.includes('pending')) return '#1b2430';
     return '#ffffff';
   };
 
   const getStatusMutedBackground = (status) => {
     const s = status?.toLowerCase() || '';
+    if (s.includes('awaiting')) return '#fff0e0';
     if (s.includes('received') || s.includes('pending')) return '#fff7d6';
     if (s.includes('preparing')) return '#e7f8fc';
     if (s.includes('ready')) return '#e9f9ef';
@@ -269,6 +286,7 @@ function AdminOrdersPage() {
   const getStatusButtonTextColor = (status, isActive) => {
     if (!isActive) {
       const s = status?.toLowerCase() || '';
+      if (s.includes('awaiting')) return '#8a4a00';
       if (s.includes('received') || s.includes('pending')) return '#7a5a00';
       if (s.includes('preparing')) return '#0f5f6d';
       if (s.includes('ready')) return '#1b6f2f';
@@ -313,6 +331,7 @@ function AdminOrdersPage() {
 
   const getStatusIcon = (status) => {
     const s = status?.toLowerCase() || '';
+    if (s.includes('awaiting')) return '💵';
     if (s.includes('received') || s.includes('pending')) return '•';
     if (s.includes('preparing')) return '•';
     if (s.includes('ready')) return '✓';
@@ -358,7 +377,7 @@ function AdminOrdersPage() {
         <div className="search-box">
           <input
             type="text"
-            placeholder="Search by Order ID, Name, or Email..."
+            placeholder="Search by Order ID, Name, Email, or Mobile..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
@@ -402,6 +421,12 @@ function AdminOrdersPage() {
             All Orders
           </button>
           <button
+            className={`filter-btn ${filterStatus === 'awaiting payment' ? 'active' : ''}`}
+            onClick={() => setFilterStatus('awaiting payment')}
+          >
+            Awaiting Payment
+          </button>
+          <button
             className={`filter-btn ${filterStatus === 'received' ? 'active' : ''}`}
             onClick={() => setFilterStatus('received')}
           >
@@ -441,8 +466,10 @@ function AdminOrdersPage() {
               </div>
 
               <div className="orders-grid">
-                {orders.map(order => {
+{orders.map(order => {
                   const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+                  const customerLabel = String(order.customer_name || order.user_name || '').trim();
+                  const customerMobile = String(order.customer_mobile || '').trim();
                   return (
                     <div key={order.id} className="order-card">
                       <div className="order-header">
@@ -460,6 +487,14 @@ function AdminOrdersPage() {
                           <span className="label">Date:</span>
                           <span className="value">{new Date(order.timestamp).toLocaleString()}</span>
                         </div>
+                        {(customerLabel || customerMobile) && (
+                          <div className="detail-row">
+                            <span className="label">Customer:</span>
+                            <span className="value">
+                              {customerLabel || 'Guest'}{customerMobile ? ` • ${customerMobile}` : ''}
+                            </span>
+                          </div>
+                        )}
                   <div className="detail-row">
                     <span className="label">Amount:</span>
                     <span className="value amount">₹{(order.total_amount || 0).toFixed(2)}</span>
@@ -614,12 +649,28 @@ function AdminOrdersPage() {
                 <div className="customer-card">
                   <div className="customer-field">
                     <span className="label">Full Name</span>
-                    <span className="value">{selectedOrder.user_name || 'N/A'}</span>
+                    <span className="value">{selectedOrder.customer_name || selectedOrder.user_name || 'N/A'}</span>
                   </div>
                   <div className="customer-field">
                     <span className="label">Email</span>
                     <span className="value">{selectedOrder.user_email || 'N/A'}</span>
                   </div>
+                  {selectedOrder.customer_mobile && (
+                    <div className="customer-field">
+                      <span className="label">Mobile</span>
+                      <span className="value">{selectedOrder.customer_mobile}</span>
+                    </div>
+                  )}
+                  {(selectedOrder.order_source || selectedOrder.payment_method || selectedOrder.payment_status) && (
+                    <div className="customer-field">
+                      <span className="label">Order Type</span>
+                      <span className="value">
+                        {String(selectedOrder.order_source || 'ONLINE').toUpperCase()}
+                        {selectedOrder.payment_method ? ` • ${String(selectedOrder.payment_method).toUpperCase()}` : ''}
+                        {selectedOrder.payment_status ? ` • ${String(selectedOrder.payment_status).toUpperCase()}` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -663,27 +714,67 @@ function AdminOrdersPage() {
               <div className="section">
                 <h4>Order Progress</h4>
                 <div className="progress-timeline">
-                  {['Received', 'Preparing', 'Ready', 'Completed'].map((status, idx) => {
-                    const statuses = ['Received', 'Preparing', 'Ready', 'Completed'];
-                    const currentIdx = statuses.indexOf(selectedOrder.status);
-                    const isCompleted = idx <= currentIdx && currentIdx !== -1;
-                    const isCurrent = selectedOrder.status === status;
+                  {(() => {
+                    const isOffline = String(selectedOrder.order_source || '').toUpperCase() === 'OFFLINE' || selectedOrder.status === 'Awaiting Payment';
+                    const statuses = isOffline
+                      ? ['Awaiting Payment', 'Received', 'Preparing', 'Ready', 'Completed']
+                      : ['Received', 'Preparing', 'Ready', 'Completed'];
 
-                    return (
-                      <div 
-                        key={status} 
-                        className={`progress-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'active' : ''}`}
-                      >
-                        <div className="progress-dot">
-                          {isCompleted ? '✓' : idx + 1}
+                    return statuses.map((status, idx) => {
+                      const currentIdx = statuses.indexOf(selectedOrder.status);
+                      const isCompleted = idx <= currentIdx && currentIdx !== -1;
+                      const isCurrent = selectedOrder.status === status;
+
+                      return (
+                        <div
+                          key={status}
+                          className={`progress-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'active' : ''}`}
+                        >
+                          <div className="progress-dot">
+                            {isCompleted ? '✓' : idx + 1}
+                          </div>
+                          <div className="progress-label">{status}</div>
+                          {idx < statuses.length - 1 && <div className="progress-line"></div>}
                         </div>
-                        <div className="progress-label">{status}</div>
-                        {idx < statuses.length - 1 && <div className="progress-line"></div>}
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
+
+              {/* Offline Cash Actions */}
+              {String(selectedOrder.order_source || '').toUpperCase() === 'OFFLINE' && (
+                <div className="section action-section">
+                  <h4>Offline Payment</h4>
+                  {selectedOrder.status === 'Awaiting Payment' ? (
+                    <div className="status-buttons enhanced" style={{ gap: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className="status-btn enhanced active"
+                        onClick={() => handleMarkPaid(selectedOrder.id)}
+                        style={{ backgroundColor: '#ff9800', borderColor: '#ff9800', color: '#1b2430' }}
+                      >
+                        💵 <span>Mark Paid (Generate Token)</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="status-btn enhanced"
+                        onClick={() => handleStatusChange(selectedOrder.id, 'Cancelled')}
+                        style={{ borderColor: '#dc3545', color: '#a52833', backgroundColor: '#fdebed' }}
+                      >
+                        ✕ <span>Cancel Unpaid Order</span>
+                      </button>
+                      <div style={{ color: '#666', paddingTop: '0.25rem' }}>
+                        Note: Unpaid offline orders auto-cancel after 30 minutes.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: '#666' }}>
+                      This offline order is already processed (paid or cancelled).
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Status Update Actions */}
               <div className="section action-section">

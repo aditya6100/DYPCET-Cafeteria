@@ -39,15 +39,13 @@ function CartPage() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [orderInstruction, setOrderInstruction] = useState('');
   const [orderPause, setOrderPause] = useState({ is_paused_now: false, message: '' });
+  const [paymentMode, setPaymentMode] = useState('online'); // online | cash
+  const [guestName, setGuestName] = useState('');
+  const [guestMobile, setGuestMobile] = useState('');
 
   const totalAmountWithTaxes = cartTotal;
 
-  useEffect(() => {
-    if (!isLoggedIn) {
-      showAlert('Please log in to view your cart.', 'error');
-      navigate('/login');
-    }
-  }, [isLoggedIn, navigate, showAlert]);
+  // Cart supports guest checkout (cash), so do not force-login on page load.
 
   useEffect(() => {
     const fetchPause = async () => {
@@ -90,6 +88,12 @@ function CartPage() {
       // If pause settings cannot be fetched, continue and let the server validate.
     }
 
+    if (paymentMode === 'online' && !isLoggedIn) {
+      showAlert('Please log in to pay online.', 'error');
+      navigate('/login');
+      return;
+    }
+
     const instructionInput = window.prompt(
       'Any instruction for your order? (optional)\nExamples: less spicy, no onion, extra sauce',
       orderInstruction
@@ -99,6 +103,50 @@ function CartPage() {
     }
     const normalizedInstruction = String(instructionInput || '').trim().slice(0, 500);
     setOrderInstruction(normalizedInstruction);
+
+    if (paymentMode === 'cash') {
+      const trimmedName = String((isLoggedIn ? user?.name : guestName) || '').trim();
+      const mobileDigits = String((isLoggedIn ? user?.mobile_no : guestMobile) || '').replace(/\D/g, '').slice(-10);
+
+      if (!trimmedName) {
+        showAlert('Please enter your name for cash orders.', 'error');
+        return;
+      }
+      if (!/^\d{10}$/.test(mobileDigits)) {
+        showAlert('Please enter a valid 10-digit mobile number for cash orders.', 'error');
+        return;
+      }
+
+      setIsProcessingPayment(true);
+      try {
+        const payload = {
+          items: cart,
+          total_amount: totalAmountWithTaxes,
+          order_instruction: normalizedInstruction
+        };
+        if (!isLoggedIn) {
+          payload.customer_name = trimmedName;
+          payload.customer_mobile = mobileDigits;
+        }
+
+        const result = await apiRequest('/orders/offline', 'POST', payload);
+        if (result?.orderId) {
+          if (result.guestAccessToken) {
+            localStorage.setItem(`guest_order_${result.orderId}_token`, String(result.guestAccessToken));
+          }
+           clearCart();
+           showAlert('Offline order created. Please pay at the counter to start preparation.', 'success');
+           navigate(`/status/${result.orderId}${isLoggedIn ? '' : '?guest=1'}`);
+           return;
+         }
+        throw new Error('Could not create offline order.');
+      } catch (error) {
+        showAlert(`Could not create offline order: ${error.message}`, 'error');
+      } finally {
+        setIsProcessingPayment(false);
+      }
+      return;
+    }
 
     setIsProcessingPayment(true);
     const scriptLoaded = await loadRazorpayScript();
@@ -253,6 +301,56 @@ function CartPage() {
               onChange={(e) => setOrderInstruction(e.target.value)}
             />
           </div>
+
+          <div className="order-instruction-box">
+            <label>Payment Method</label>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="radio"
+                  name="paymentMode"
+                  value="online"
+                  checked={paymentMode === 'online'}
+                  onChange={() => setPaymentMode('online')}
+                />
+                Online Payment
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="radio"
+                  name="paymentMode"
+                  value="cash"
+                  checked={paymentMode === 'cash'}
+                  onChange={() => setPaymentMode('cash')}
+                />
+                Cash (Pay at counter)
+              </label>
+            </div>
+
+            {!isLoggedIn && paymentMode === 'cash' && (
+              <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  placeholder="Your name"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                />
+                <input
+                  type="tel"
+                  placeholder="10-digit mobile number"
+                  value={guestMobile}
+                  maxLength={10}
+                  onChange={(e) => setGuestMobile(e.target.value.replace(/\\D/g, ''))}
+                />
+              </div>
+            )}
+
+            {paymentMode === 'online' && !isLoggedIn && (
+              <p style={{ marginTop: '0.5rem', color: '#b00020', fontSize: '0.9rem' }}>
+                Login is required for online payment.
+              </p>
+            )}
+          </div>
           <div className="cart-summary-actions">
             <button type="button" className="button danger-btn" onClick={clearCart}>Clear Cart</button>
             <button
@@ -261,7 +359,9 @@ function CartPage() {
               onClick={handlePayment}
               disabled={isProcessingPayment || Boolean(orderPause?.is_paused_now)}
             >
-              {orderPause?.is_paused_now ? 'Ordering Paused' : (isProcessingPayment ? 'Processing...' : 'Proceed to Payment')}
+              {orderPause?.is_paused_now
+                ? 'Ordering Paused'
+                : (isProcessingPayment ? 'Processing...' : (paymentMode === 'cash' ? 'Place Cash Order' : 'Proceed to Payment'))}
             </button>
           </div>
           {orderPause?.is_paused_now && String(orderPause?.message || '').trim() && (

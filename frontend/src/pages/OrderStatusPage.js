@@ -1,7 +1,7 @@
 // frontend/src/pages/OrderStatusPage.js
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../hooks/useAlert';
 import apiRequest from '../utils/api';
@@ -14,6 +14,7 @@ function OrderStatusPage() {
   const { showAlert } = useAlert();
   const navigate = useNavigate();
   const { orderId } = useParams();
+  const location = useLocation();
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,10 +22,20 @@ function OrderStatusPage() {
   const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
   const previousStatusRef = useRef(null);
 
+  const searchParams = new URLSearchParams(location.search || '');
+  const isGuestView = searchParams.get('guest') === '1';
+  const guestToken = orderId ? localStorage.getItem(`guest_order_${orderId}_token`) : null;
+
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (!isLoggedIn && !isGuestView) {
       showAlert('Please log in to view order status.', 'error');
       navigate('/login');
+      return;
+    }
+
+    if (!isLoggedIn && isGuestView && !guestToken) {
+      showAlert('Guest session expired. Please place the order again.', 'error');
+      navigate('/menu-items');
       return;
     }
 
@@ -40,7 +51,9 @@ function OrderStatusPage() {
           setLoading(true);
         }
 
-        const data = await apiRequest(`/orders/${orderId}`);
+        const data = (!isLoggedIn && isGuestView)
+          ? await apiRequest(`/orders/guest/${orderId}?token=${encodeURIComponent(String(guestToken || ''))}`)
+          : await apiRequest(`/orders/${orderId}`);
 
         if (typeof data.items === 'string') {
           data.items = JSON.parse(data.items);
@@ -59,7 +72,7 @@ function OrderStatusPage() {
       } catch (error) {
         if (initialLoad) {
           showAlert(`Error loading order status: ${error.message}`, 'error');
-          navigate('/orders');
+          navigate(isGuestView ? '/menu-items' : '/orders');
         }
       } finally {
         if (initialLoad) {
@@ -77,14 +90,15 @@ function OrderStatusPage() {
     return () => {
       clearInterval(pollTimer);
     };
-  }, [isLoggedIn, navigate, orderId, showAlert]);
+  }, [guestToken, isGuestView, isLoggedIn, navigate, orderId, showAlert]);
 
-  if (!isLoggedIn || !orderId) {
+  if ((!isLoggedIn && !isGuestView) || !orderId) {
     return null;
   }
 
-  const statusSteps = ['Received', 'Preparing', 'Ready', 'Completed', 'Cancelled'];
+  const statusSteps = ['Awaiting Payment', 'Received', 'Preparing', 'Ready', 'Completed', 'Cancelled'];
   const statusMeta = {
+    'Awaiting Payment': { icon: '💵', subtitle: 'Pay at counter' },
     Received: { icon: '🧾', subtitle: 'Order accepted' },
     Preparing: { icon: '👨‍🍳', subtitle: 'Cooking now' },
     Ready: { icon: '📦', subtitle: 'Pickup ready' },
@@ -94,13 +108,14 @@ function OrderStatusPage() {
   const currentStatusIndex = order ? statusSteps.indexOf(order.status) : -1;
   const normalizedProgressIndex = order?.status === 'Cancelled'
     ? 0
-    : Math.max(0, Math.min(3, currentStatusIndex));
-  const progressPercent = Math.round((normalizedProgressIndex / 3) * 100);
+    : Math.max(0, Math.min(4, currentStatusIndex));
+  const progressPercent = Math.round((normalizedProgressIndex / 4) * 100);
   const normalizedRefundStatus = (order?.refund_status || 'None').toLowerCase();
-  const canRequestRefund = order
+  const canRequestRefund = !isGuestView
+    && order
     && ['received', 'preparing', 'cancelled'].includes((order.status || '').toLowerCase())
     && !['requested', 'approved', 'processed'].includes(normalizedRefundStatus);
-  const shouldShowBill = order && (order.status === 'Ready' || order.status === 'Completed');
+  const shouldShowBill = !isGuestView && order && (order.status === 'Ready' || order.status === 'Completed');
   const itemsSubtotal = order?.items
     ? order.items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 0)), 0)
     : 0;
@@ -186,6 +201,13 @@ function OrderStatusPage() {
               Status auto-refreshes every 10 seconds
               {lastSyncedAt ? ` • Last synced: ${new Date(lastSyncedAt).toLocaleTimeString()}` : ''}
             </p>
+
+            {order.status === 'Awaiting Payment' && (
+              <div className="preparing-countdown-box">
+                <h4>Awaiting payment at counter</h4>
+                <p>Please pay cash at the order counter. Your order will start preparing after payment confirmation.</p>
+              </div>
+            )}
 
             {order.status === 'Preparing' && (
               <div className="preparing-countdown-box">
@@ -295,7 +317,9 @@ function OrderStatusPage() {
                   {isSubmittingRefund ? 'Submitting...' : 'Request Refund'}
                 </button>
               )}
-              <Link to="/orders" className="button button-small">Back to Order History</Link>
+              <Link to={isGuestView ? '/menu-items' : '/orders'} className="button button-small">
+                {isGuestView ? 'Back to Menu' : 'Back to Order History'}
+              </Link>
             </div>
           </>
         )}

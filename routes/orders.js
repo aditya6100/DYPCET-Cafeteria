@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const querystring = require('querystring');
+const bcrypt = require('bcrypt');
 
 const escapePdfText = (value = '') =>
     String(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
@@ -106,7 +107,7 @@ const createA5BillPdfBuffer = (billData) => {
 
 module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const router = express.Router();
-    const { protect, admin } = auth;
+    const { protect, optionalProtect, admin } = auth;
 
     const normalizeStatus = (status = '') => String(status).trim().toLowerCase();
 
@@ -172,6 +173,33 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         throw new Error(settings.message || 'Ordering is temporarily paused. Please try again later.');
     };
 
+    const ensureOfflineGuestUser = async () => {
+        const existing = await db.query(
+            `SELECT id FROM users WHERE email = ? LIMIT 1`,
+            ['offline_guest@dypcet.local']
+        );
+        if (existing?.[0]?.id) return Number(existing[0].id);
+
+        const randomPassword = crypto.randomBytes(24).toString('hex');
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+        const result = await db.query(
+            `INSERT INTO users (name, email, password, user_type, mobile_no)
+             VALUES (?, ?, ?, ?, ?)`,
+            ['Offline Guest', 'offline_guest@dypcet.local', hashedPassword, 'visitor', '0000000000']
+        );
+        return Number(result.insertId);
+    };
+
+    let offlineGuestUserIdPromise = null;
+    const getOfflineGuestUserId = () => {
+        if (!offlineGuestUserIdPromise) {
+            offlineGuestUserIdPromise = ensureOfflineGuestUser();
+        }
+        return offlineGuestUserIdPromise;
+    };
+
     const getRefundPolicy = (status) => {
         const normalized = normalizeStatus(status);
         if (normalized === 'received') {
@@ -235,7 +263,11 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             { column: 'refund_processed_by', sql: "ALTER TABLE orders ADD COLUMN refund_processed_by INT NULL" },
             { column: 'refund_last_action', sql: "ALTER TABLE orders ADD COLUMN refund_last_action VARCHAR(30) NULL" },
             { column: 'order_instruction', sql: "ALTER TABLE orders ADD COLUMN order_instruction TEXT NULL" },
-            { column: 'token_number', sql: "ALTER TABLE orders ADD COLUMN token_number INT NULL" }
+            { column: 'token_number', sql: "ALTER TABLE orders ADD COLUMN token_number INT NULL" },
+            { column: 'order_source', sql: "ALTER TABLE orders ADD COLUMN order_source VARCHAR(20) NOT NULL DEFAULT 'ONLINE'" },
+            { column: 'payment_method', sql: "ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20) NOT NULL DEFAULT 'ONLINE'" },
+            { column: 'guest_access_token', sql: "ALTER TABLE orders ADD COLUMN guest_access_token VARCHAR(80) NULL" },
+            { column: 'paid_at', sql: "ALTER TABLE orders ADD COLUMN paid_at DATETIME NULL" }
         ];
 
         for (const migration of migrations) {
@@ -260,11 +292,17 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         await db.query(
             `UPDATE orders
              SET payment_status = COALESCE(NULLIF(payment_status, ''), 'Paid'),
-                 refund_status = COALESCE(NULLIF(refund_status, ''), 'None')
+                 refund_status = COALESCE(NULLIF(refund_status, ''), 'None'),
+                 order_source = COALESCE(NULLIF(order_source, ''), 'ONLINE'),
+                 payment_method = COALESCE(NULLIF(payment_method, ''), 'ONLINE')
              WHERE payment_status IS NULL
                 OR payment_status = ''
                 OR refund_status IS NULL
-                OR refund_status = ''`
+                OR refund_status = ''
+                OR order_source IS NULL
+                OR order_source = ''
+                OR payment_method IS NULL
+                OR payment_method = ''`
         );
 
         await db.query(
@@ -288,6 +326,30 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     ensureRefundColumns()
         .then(() => {
             console.log('Refund columns checked/ready.');
+
+            // Ensure a dedicated guest user exists for offline checkout when no login is used.
+            getOfflineGuestUserId().catch((error) => {
+                console.error('Offline guest user setup failed:', error.message);
+            });
+
+            // Auto-cancel unpaid offline orders after 30 minutes.
+            const cancelUnpaidOffline = async () => {
+                try {
+                    await db.query(
+                        `UPDATE orders
+                         SET status = 'Cancelled'
+                         WHERE status = 'Awaiting Payment'
+                           AND LOWER(payment_status) IN ('unpaid', 'pending')
+                           AND UPPER(order_source) = 'OFFLINE'
+                           AND timestamp < (NOW() - INTERVAL 30 MINUTE)`
+                    );
+                } catch (error) {
+                    console.error('Auto-cancel unpaid offline orders failed:', error.message);
+                }
+            };
+
+            setInterval(cancelUnpaidOffline, 60 * 1000);
+            cancelUnpaidOffline();
         })
         .catch((error) => {
             console.error('Refund column setup failed:', error.message);
@@ -499,6 +561,129 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             console.error("!!! DATABASE ERROR during order insertion:", dbError);
             throw new Error("Failed to save order to the database due to a server error.");
         }
+    }));
+
+    // @desc    Create an offline (cash) order without online payment
+    // @route   POST /api/orders/offline
+    // @access  Public (optional auth)
+    router.post('/offline', optionalProtect, asyncHandler(async (req, res) => {
+        await ensureOrderingOpen(res);
+
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        const totalAmount = Number(req.body?.total_amount || 0);
+        const orderInstruction = typeof req.body?.order_instruction === 'string'
+            ? req.body.order_instruction.trim().slice(0, 500)
+            : null;
+
+        if (items.length === 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
+            res.status(400);
+            throw new Error('Valid items and total_amount are required.');
+        }
+
+        const isLoggedIn = Boolean(req.user?.id);
+        let customerName = '';
+        let customerMobile = '';
+        let userId = null;
+        let guestAccessToken = null;
+
+        if (isLoggedIn) {
+            userId = Number(req.user.id);
+            customerName = String(req.user.name || '').trim();
+            customerMobile = String(req.user.mobile_no || '').trim();
+        } else {
+            customerName = String(req.body?.customer_name || '').trim().slice(0, 100);
+            const mobileRaw = String(req.body?.customer_mobile || '').trim();
+            const mobileDigits = mobileRaw.replace(/\D/g, '').slice(-10);
+
+            if (!customerName) {
+                res.status(400);
+                throw new Error('Customer name is required for offline orders.');
+            }
+            if (!/^\d{10}$/.test(mobileDigits)) {
+                res.status(400);
+                throw new Error('Customer mobile number must be 10 digits.');
+            }
+
+            customerMobile = mobileDigits;
+            userId = await getOfflineGuestUserId();
+            guestAccessToken = crypto.randomBytes(24).toString('hex');
+        }
+
+        const sql = `INSERT INTO orders
+            (user_id, items, total, status, payment_status, payment_method, order_source, token_number,
+             customer_name, customer_mobile, transaction_id, payment_id, order_instruction, guest_access_token, paid_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        const params = [
+            userId,
+            JSON.stringify(items),
+            Number(totalAmount.toFixed(2)),
+            'Awaiting Payment',
+            'Unpaid',
+            'CASH',
+            'OFFLINE',
+            null,
+            customerName || null,
+            customerMobile || null,
+            null,
+            null,
+            orderInstruction || null,
+            guestAccessToken,
+            null
+        ];
+
+        const result = await db.query(sql, params);
+        res.status(201).json({
+            message: 'Offline order created. Please pay at the counter to start preparation.',
+            orderId: result.insertId,
+            guestAccessToken: guestAccessToken || null
+        });
+    }));
+
+    // @desc    Get a single offline guest order by ID (token-based)
+    // @route   GET /api/orders/guest/:id
+    // @access  Public (token required)
+    router.get('/guest/:id', asyncHandler(async (req, res) => {
+        const orderId = Number(req.params.id);
+        const token = String(req.query?.token || '').trim();
+
+        if (!Number.isFinite(orderId) || orderId <= 0) {
+            res.status(400);
+            throw new Error('Invalid order ID.');
+        }
+        if (!token) {
+            res.status(401);
+            throw new Error('Guest token is required.');
+        }
+
+        const results = await db.query(
+            `SELECT id, items, total AS total_amount, status, timestamp, transaction_id,
+                    payment_status, payment_method, order_source, token_number, customer_name, customer_mobile,
+                    refund_status, refund_amount, refund_reason, refund_admin_note,
+                    refund_requested_at, refund_processed_at, refund_processed_by, refund_last_action, order_instruction,
+                    guest_access_token
+             FROM orders
+             WHERE id = ?
+               AND UPPER(order_source) = 'OFFLINE'
+             LIMIT 1`,
+            [orderId]
+        );
+        const order = results?.[0];
+        if (!order) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+        if (String(order.guest_access_token || '') !== token) {
+            res.status(403);
+            throw new Error('Invalid guest token.');
+        }
+
+        if (order.items && typeof order.items === 'string') {
+            order.items = JSON.parse(order.items);
+        }
+        delete order.guest_access_token;
+
+        res.json(order);
     }));
 
     // @desc    Get Razorpay checkout config (public key only)
@@ -802,7 +987,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     router.get('/history', protect, asyncHandler(async (req, res) => {
         const orders = await db.query(
             `SELECT id, items, total AS total_amount, status, timestamp, transaction_id,
-                    payment_status, refund_status, refund_amount, refund_reason,
+                    payment_status, payment_method, order_source, token_number,
+                    customer_name, customer_mobile,
+                    refund_status, refund_amount, refund_reason,
                     refund_admin_note, refund_requested_at, refund_processed_at,
                     refund_processed_by, refund_last_action, order_instruction
              FROM orders
@@ -817,7 +1004,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     router.get('/all', protect, admin, asyncHandler(async (req, res) => {
         const orders = await db.query(
             `SELECT o.id, o.items, o.total AS total_amount, o.status, o.timestamp, o.transaction_id,
-                    o.payment_status, o.refund_status, o.refund_amount, o.refund_reason,
+                    o.payment_status, o.payment_method, o.order_source, o.token_number,
+                    o.customer_name, o.customer_mobile,
+                    o.refund_status, o.refund_amount, o.refund_reason,
                     o.refund_admin_note, o.refund_requested_at, o.refund_processed_at,
                     o.refund_processed_by, o.refund_last_action, o.order_instruction,
                     u.name as user_name, u.email as user_email
@@ -1166,7 +1355,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         const orderId = req.params.id;
         console.log(`--- FETCHING ORDER ID: ${orderId} ---`);
         const query = `SELECT id, items, total AS total_amount, status, timestamp, transaction_id, user_id,
-                              payment_status, refund_status, refund_amount, refund_reason,
+                              payment_status, payment_method, order_source, token_number, customer_name, customer_mobile,
+                              refund_status, refund_amount, refund_reason,
                               refund_admin_note, refund_requested_at, refund_processed_at,
                               refund_processed_by, refund_last_action, order_instruction
                        FROM orders WHERE id = ?`;
@@ -1194,6 +1384,59 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
         console.log(`Sending order ${orderId} details:`, order);
         res.json(order);
+    }));
+
+    // @desc    Mark an offline cash order as paid and assign token number
+    // @route   PUT /api/orders/:id/mark-paid
+    // @access  Admin
+    router.put('/:id/mark-paid', protect, admin, asyncHandler(async (req, res) => {
+        const orderId = Number(req.params.id);
+        if (!Number.isFinite(orderId) || orderId <= 0) {
+            res.status(400);
+            throw new Error('Invalid order ID.');
+        }
+
+        const rows = await db.query(
+            `SELECT id, status, timestamp, payment_status, order_source
+             FROM orders
+             WHERE id = ?
+             LIMIT 1`,
+            [orderId]
+        );
+        const order = rows?.[0];
+        if (!order) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+        if (String(order.order_source || '').toUpperCase() !== 'OFFLINE') {
+            res.status(400);
+            throw new Error('Only offline orders can be marked paid here.');
+        }
+        if (String(order.payment_status || '').toLowerCase() === 'paid') {
+            return res.json({ message: 'Order is already marked as paid.' });
+        }
+
+        const tokenRows = await db.query(
+            `SELECT COALESCE(MAX(token_number), 0) + 1 AS next_token
+             FROM orders
+             WHERE token_number IS NOT NULL
+               AND DATE(timestamp) = DATE(?)`,
+            [order.timestamp]
+        );
+        const tokenNumber = Number(tokenRows?.[0]?.next_token || 1);
+
+        await db.query(
+            `UPDATE orders
+             SET payment_status = 'Paid',
+                 payment_method = 'CASH',
+                 paid_at = NOW(),
+                 token_number = ?,
+                 status = 'Received'
+             WHERE id = ?`,
+            [tokenNumber, orderId]
+        );
+
+        res.json({ message: 'Offline order marked as paid.', token_number: tokenNumber });
     }));
 
 
