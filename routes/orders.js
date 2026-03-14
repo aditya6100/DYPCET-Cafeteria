@@ -590,6 +590,18 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             userId = Number(req.user.id);
             customerName = String(req.user.name || '').trim();
             customerMobile = String(req.user.mobile_no || '').trim();
+
+            // If profile is missing details, allow client to provide them for cash order.
+            const providedName = String(req.body?.customer_name || '').trim().slice(0, 100);
+            const providedMobileRaw = String(req.body?.customer_mobile || '').trim();
+            const providedMobileDigits = providedMobileRaw.replace(/\D/g, '').slice(-10);
+
+            if (!customerName && providedName) {
+                customerName = providedName;
+            }
+            if ((!customerMobile || !/^\d{10}$/.test(customerMobile.replace(/\D/g, '').slice(-10))) && /^\d{10}$/.test(providedMobileDigits)) {
+                customerMobile = providedMobileDigits;
+            }
         } else {
             customerName = String(req.body?.customer_name || '').trim().slice(0, 100);
             const mobileRaw = String(req.body?.customer_mobile || '').trim();
