@@ -899,8 +899,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
     // @desc    Get Razorpay checkout config (public key only)
     // @route   GET /api/orders/razorpay/config
-    // @access  Protected
-    router.get('/razorpay/config', protect, asyncHandler(async (_req, res) => {
+    // @access  Public
+    router.get('/razorpay/config', asyncHandler(async (_req, res) => {
         if (!config.razorpay.key_id) {
             res.status(500);
             throw new Error('Razorpay key is not configured on server.');
