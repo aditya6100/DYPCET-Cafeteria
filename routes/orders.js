@@ -109,6 +109,28 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const router = express.Router();
     const { protect, optionalProtect, admin } = auth;
 
+    // Cache orders table columns to support deployments where schema migrations (ALTER TABLE)
+    // are not permitted. Used to avoid selecting/inserting unknown columns.
+    let ordersColumnCache = { fetchedAt: 0, columns: new Set() };
+    const getOrdersColumns = async () => {
+        const now = Date.now();
+        if (ordersColumnCache.fetchedAt && (now - ordersColumnCache.fetchedAt) < 60 * 1000) {
+            return ordersColumnCache.columns;
+        }
+
+        const cols = await db.query(
+            `SELECT COLUMN_NAME
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'orders'`
+        );
+        ordersColumnCache = {
+            fetchedAt: now,
+            columns: new Set((cols || []).map((c) => String(c.COLUMN_NAME)))
+        };
+        return ordersColumnCache.columns;
+    };
+
     const normalizeStatus = (status = '') => String(status).trim().toLowerCase();
 
     const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
@@ -272,38 +294,60 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
         for (const migration of migrations) {
             if (!existing.has(migration.column)) {
-                // eslint-disable-next-line no-await-in-loop
-                await db.query(migration.sql);
+                try {
+                    // eslint-disable-next-line no-await-in-loop
+                    await db.query(migration.sql);
+                    existing.add(migration.column);
+                } catch (error) {
+                    console.error(`Orders migration failed for column "${migration.column}":`, error.message);
+                }
             }
         }
 
         // Backfill existing orders if token_number is null (optional, but good for display)
-        await db.query(`
-            UPDATE orders o
-            SET token_number = (
-                SELECT COUNT(*)
-                FROM (SELECT id, timestamp FROM orders) as o2
-                WHERE DATE(o2.timestamp) = DATE(o.timestamp)
-                  AND o2.id <= o.id
-            )
-            WHERE token_number IS NULL
-        `);
+        if (existing.has('token_number')) {
+            try {
+                await db.query(`
+                    UPDATE orders o
+                    SET token_number = (
+                        SELECT COUNT(*)
+                        FROM (SELECT id, timestamp FROM orders) as o2
+                        WHERE DATE(o2.timestamp) = DATE(o.timestamp)
+                          AND o2.id <= o.id
+                    )
+                    WHERE token_number IS NULL
+                `);
+            } catch (error) {
+                console.error('Token number backfill failed:', error.message);
+            }
+        }
 
-        await db.query(
-            `UPDATE orders
-             SET payment_status = COALESCE(NULLIF(payment_status, ''), 'Paid'),
-                 refund_status = COALESCE(NULLIF(refund_status, ''), 'None'),
-                 order_source = COALESCE(NULLIF(order_source, ''), 'ONLINE'),
-                 payment_method = COALESCE(NULLIF(payment_method, ''), 'ONLINE')
-             WHERE payment_status IS NULL
-                OR payment_status = ''
-                OR refund_status IS NULL
-                OR refund_status = ''
-                OR order_source IS NULL
-                OR order_source = ''
-                OR payment_method IS NULL
-                OR payment_method = ''`
-        );
+        const normalizeSets = [];
+        const normalizeWheres = [];
+        if (existing.has('payment_status')) {
+            normalizeSets.push(`payment_status = COALESCE(NULLIF(payment_status, ''), 'Paid')`);
+            normalizeWheres.push(`payment_status IS NULL OR payment_status = ''`);
+        }
+        if (existing.has('refund_status')) {
+            normalizeSets.push(`refund_status = COALESCE(NULLIF(refund_status, ''), 'None')`);
+            normalizeWheres.push(`refund_status IS NULL OR refund_status = ''`);
+        }
+        if (existing.has('order_source')) {
+            normalizeSets.push(`order_source = COALESCE(NULLIF(order_source, ''), 'ONLINE')`);
+            normalizeWheres.push(`order_source IS NULL OR order_source = ''`);
+        }
+        if (existing.has('payment_method')) {
+            normalizeSets.push(`payment_method = COALESCE(NULLIF(payment_method, ''), 'ONLINE')`);
+            normalizeWheres.push(`payment_method IS NULL OR payment_method = ''`);
+        }
+
+        if (normalizeSets.length) {
+            try {
+                await db.query(`UPDATE orders SET ${normalizeSets.join(', ')} WHERE ${normalizeWheres.join(' OR ')}`);
+            } catch (error) {
+                console.error('Orders normalization failed:', error.message);
+            }
+        }
 
         await db.query(
             `CREATE TABLE IF NOT EXISTS refund_audit_logs (
@@ -588,6 +632,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         let customerMobile = '';
         let userId = null;
         let guestAccessToken = null;
+        const orderCols = await getOrdersColumns();
 
         if (isLoggedIn) {
             userId = Number(req.user.id);
@@ -624,30 +669,64 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             guestAccessToken = crypto.randomBytes(24).toString('hex');
         }
 
-        const sql = `INSERT INTO orders
-            (user_id, items, total, status, payment_status, payment_method, order_source, token_number,
-             customer_name, customer_mobile, transaction_id, payment_id, order_instruction, guest_access_token, paid_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-        const params = [
+        // Build INSERT dynamically based on available columns.
+        const insertColumns = ['user_id', 'items', 'total', 'status', 'customer_name', 'customer_mobile'];
+        const insertParams = [
             userId,
             JSON.stringify(items),
             Number(totalAmount.toFixed(2)),
             'Awaiting Payment',
-            'Unpaid',
-            'CASH',
-            'OFFLINE',
-            null,
             customerName || null,
-            customerMobile || null,
-            null,
-            null,
-            orderInstruction || null,
-            guestAccessToken,
-            null
+            customerMobile || null
         ];
 
-        const result = await db.query(sql, params);
+        // Store guest token either in guest_access_token (preferred) or transaction_id (fallback).
+        if (guestAccessToken) {
+            if (orderCols.has('guest_access_token')) {
+                insertColumns.push('guest_access_token');
+                insertParams.push(guestAccessToken);
+            } else if (orderCols.has('transaction_id')) {
+                insertColumns.push('transaction_id');
+                insertParams.push(guestAccessToken);
+            }
+        }
+
+        if (orderCols.has('payment_status')) {
+            insertColumns.push('payment_status');
+            insertParams.push('Unpaid');
+        }
+        if (orderCols.has('payment_method')) {
+            insertColumns.push('payment_method');
+            insertParams.push('CASH');
+        }
+        if (orderCols.has('order_source')) {
+            insertColumns.push('order_source');
+            insertParams.push('OFFLINE');
+        }
+        if (orderCols.has('token_number')) {
+            insertColumns.push('token_number');
+            insertParams.push(null);
+        }
+        if (orderCols.has('payment_id')) {
+            insertColumns.push('payment_id');
+            insertParams.push(null);
+        }
+        if (!insertColumns.includes('transaction_id') && orderCols.has('transaction_id')) {
+            insertColumns.push('transaction_id');
+            insertParams.push(null);
+        }
+        if (orderInstruction && orderCols.has('order_instruction')) {
+            insertColumns.push('order_instruction');
+            insertParams.push(orderInstruction);
+        }
+        if (orderCols.has('paid_at')) {
+            insertColumns.push('paid_at');
+            insertParams.push(null);
+        }
+
+        const sql = `INSERT INTO orders (${insertColumns.join(', ')}) VALUES (${insertColumns.map(() => '?').join(', ')})`;
+
+        const result = await db.query(sql, insertParams);
         const insertId = result?.insertId ?? result?.[0]?.insertId ?? null;
         if (!insertId) {
             res.status(500);
@@ -676,20 +755,32 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             throw new Error('Guest token is required.');
         }
 
+        const orderCols = await getOrdersColumns();
+        const paymentMethodExpr = orderCols.has('payment_method') ? 'payment_method' : 'NULL AS payment_method';
+        const orderSourceExpr = orderCols.has('order_source') ? 'order_source' : 'NULL AS order_source';
+        const tokenNumberExpr = orderCols.has('token_number') ? 'token_number' : 'NULL AS token_number';
+        const guestTokenExpr = orderCols.has('guest_access_token')
+            ? 'guest_access_token'
+            : (orderCols.has('transaction_id') ? 'transaction_id AS guest_access_token' : 'NULL AS guest_access_token');
+
         const results = await db.query(
             `SELECT id, items, total AS total_amount, status, timestamp, transaction_id,
-                    payment_status, payment_method, order_source, token_number, customer_name, customer_mobile,
+                    payment_status, ${paymentMethodExpr}, ${orderSourceExpr}, ${tokenNumberExpr},
+                    customer_name, customer_mobile,
                     refund_status, refund_amount, refund_reason, refund_admin_note,
                     refund_requested_at, refund_processed_at, refund_processed_by, refund_last_action, order_instruction,
-                    guest_access_token
+                    ${guestTokenExpr}
              FROM orders
              WHERE id = ?
-               AND UPPER(order_source) = 'OFFLINE'
              LIMIT 1`,
             [orderId]
         );
         const order = results?.[0];
         if (!order) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+        if (orderCols.has('order_source') && String(order.order_source || '').toUpperCase() !== 'OFFLINE') {
             res.status(404);
             throw new Error('Order not found.');
         }
@@ -1022,9 +1113,16 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @desc    Get all orders for admin
     // @route   GET /api/orders/all
     router.get('/all', protect, admin, asyncHandler(async (req, res) => {
+        const orderCols = await getOrdersColumns();
+        const paymentMethodExpr = orderCols.has('payment_method') ? 'o.payment_method' : 'NULL';
+        const orderSourceExpr = orderCols.has('order_source') ? 'o.order_source' : 'NULL';
+        const tokenNumberExpr = orderCols.has('token_number') ? 'o.token_number' : 'NULL';
         const orders = await db.query(
             `SELECT o.id, o.items, o.total AS total_amount, o.status, o.timestamp, o.transaction_id,
-                    o.payment_status, o.payment_method, o.order_source, o.token_number,
+                    o.payment_status,
+                    ${paymentMethodExpr} AS payment_method,
+                    ${orderSourceExpr} AS order_source,
+                    ${tokenNumberExpr} AS token_number,
                     o.customer_name, o.customer_mobile,
                     o.refund_status, o.refund_amount, o.refund_reason,
                     o.refund_admin_note, o.refund_requested_at, o.refund_processed_at,
@@ -1424,8 +1522,10 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             throw new Error('Invalid order ID.');
         }
 
+        const orderCols = await getOrdersColumns();
+        const orderSourceExpr = orderCols.has('order_source') ? 'order_source' : 'NULL AS order_source';
         const rows = await db.query(
-            `SELECT id, status, timestamp, payment_status, order_source
+            `SELECT id, status, timestamp, payment_status, ${orderSourceExpr}
              FROM orders
              WHERE id = ?
              LIMIT 1`,
@@ -1436,7 +1536,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             res.status(404);
             throw new Error('Order not found.');
         }
-        if (String(order.order_source || '').toUpperCase() !== 'OFFLINE') {
+        if (orderCols.has('order_source') && String(order.order_source || '').toUpperCase() !== 'OFFLINE') {
             res.status(400);
             throw new Error('Only offline orders can be marked paid here.');
         }
@@ -1444,24 +1544,40 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             return res.json({ message: 'Order is already marked as paid.' });
         }
 
-        const tokenRows = await db.query(
-            `SELECT COALESCE(MAX(token_number), 0) + 1 AS next_token
-             FROM orders
-             WHERE token_number IS NOT NULL
-               AND DATE(timestamp) = DATE(?)`,
-            [order.timestamp]
-        );
-        const tokenNumber = Number(tokenRows?.[0]?.next_token || 1);
+        // Token is only available if token_number column exists.
+        let tokenNumber = null;
+        if (orderCols.has('token_number')) {
+            const tokenRows = await db.query(
+                `SELECT COALESCE(MAX(token_number), 0) + 1 AS next_token
+                 FROM orders
+                 WHERE token_number IS NOT NULL
+                   AND DATE(timestamp) = DATE(?)`,
+                [order.timestamp]
+            );
+            tokenNumber = Number(tokenRows?.[0]?.next_token || 1);
+        }
+
+        const setParts = [`status = 'Received'`];
+        const setParams = [];
+        if (orderCols.has('payment_status')) {
+            setParts.unshift(`payment_status = 'Paid'`);
+        }
+        if (orderCols.has('payment_method')) {
+            setParts.unshift(`payment_method = 'CASH'`);
+        }
+        if (orderCols.has('paid_at')) {
+            setParts.unshift(`paid_at = NOW()`);
+        }
+        if (orderCols.has('token_number')) {
+            setParts.unshift(`token_number = ?`);
+            setParams.push(tokenNumber);
+        }
 
         await db.query(
             `UPDATE orders
-             SET payment_status = 'Paid',
-                 payment_method = 'CASH',
-                 paid_at = NOW(),
-                 token_number = ?,
-                 status = 'Received'
+             SET ${setParts.join(', ')}
              WHERE id = ?`,
-            [tokenNumber, orderId]
+            [...setParams, orderId]
         );
 
         res.json({ message: 'Offline order marked as paid.', token_number: tokenNumber });
