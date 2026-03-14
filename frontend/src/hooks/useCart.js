@@ -1,7 +1,6 @@
 // frontend/src/hooks/useCart.js
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useAlert } from './useAlert';
 
 const getCartFromLocalStorage = () => {
@@ -19,24 +18,14 @@ const saveCartToLocalStorage = (cart) => {
 };
 
 export const useCart = () => {
-    const { isLoggedIn } = useAuth();
     const { showAlert } = useAlert();
     const [cart, setCart] = useState(() => {
         // Initialize from localStorage on first render
         return getCartFromLocalStorage();
     });
 
-    // Load cart from localStorage when login status changes
-    useEffect(() => {
-        if (isLoggedIn) {
-            const savedCart = getCartFromLocalStorage();
-            setCart(savedCart);
-        } else {
-            // Clear cart if logged out
-            setCart([]);
-            localStorage.removeItem('cart');
-        }
-    }, [isLoggedIn]);
+    // Keep cart in localStorage for both guests and logged-in users.
+    // (Checkout rules are enforced at payment time, not add-to-cart time.)
 
     // Save cart to localStorage whenever it changes
     useEffect(() => {
@@ -44,11 +33,6 @@ export const useCart = () => {
     }, [cart]);
 
     const addToCart = useCallback((item, quantity = 1) => {
-        if (!isLoggedIn) {
-            showAlert("Please log in to add items to your cart.", "error");
-            return false; 
-        }
-
         setCart(prevCart => {
             const existingItem = prevCart.find(i => i.id === item.id);
             let updatedCart;
@@ -65,7 +49,7 @@ export const useCart = () => {
         });
         showAlert(`${item.name} added to cart!`, 'success');
         return true;
-    }, [isLoggedIn, showAlert]);
+    }, [showAlert]);
 
     const removeFromCart = useCallback((itemId) => {
         setCart(prevCart => {

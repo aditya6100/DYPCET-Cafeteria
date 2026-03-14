@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiRequest from '../utils/api';
-import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../hooks/useAlert';
 import { useCart } from '../hooks/useCart';
 import { MENU_CATEGORIES, CATEGORY_DISPLAY_NAMES } from '../utils/constants';
@@ -21,7 +20,6 @@ function HomePage() {
   const [showCategoryNav, setShowCategoryNav] = useState(false);
 
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
   const { showAlert } = useAlert();
   const { cart, addToCart, cartTotal, cartCount } = useCart();
 
@@ -240,11 +238,6 @@ function HomePage() {
   };
 
   const handleAddToCart = (item, quantity) => {
-    if (!isLoggedIn) {
-      showAlert('Please log in to add items to your cart.', 'error');
-      navigate('/login');
-      return;
-    }
     addToCart(item, quantity);
     showAlert(`${item.name} added x${quantity}`, 'success');
   };
