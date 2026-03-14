@@ -1026,10 +1026,18 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
              JOIN users u ON o.user_id = u.id
              ORDER BY o.timestamp DESC`
         );
-        const parsedOrders = (orders || []).map(order => ({
-            ...order,
-            items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items
-        }));
+        const parsedOrders = (orders || []).map(order => {
+            if (typeof order.items !== 'string') {
+                return { ...order, items: Array.isArray(order.items) ? order.items : [] };
+            }
+            try {
+                const parsed = JSON.parse(order.items);
+                return { ...order, items: Array.isArray(parsed) ? parsed : [] };
+            } catch (error) {
+                console.error(`Failed to parse items JSON for order ${order.id}:`, error.message);
+                return { ...order, items: [] };
+            }
+        });
         res.json(parsedOrders);
     }));
 

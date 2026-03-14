@@ -13,7 +13,11 @@ export function saveUserSession(userData) {
         _id: userData._id,
         name: userData.name,
         email: userData.email,
-        user_type: userData.user_type
+        user_type: userData.user_type,
+        mobile_no: userData.mobile_no ?? null,
+        address: userData.address ?? null,
+        student_id: userData.student_id ?? null,
+        faculty_id: userData.faculty_id ?? null,
     };
     localStorage.setItem('user', JSON.stringify(user));
 }
