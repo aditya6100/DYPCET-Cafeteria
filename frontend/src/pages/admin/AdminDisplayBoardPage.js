@@ -11,6 +11,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [orderPause, setOrderPause] = useState(null);
   const containerRef = useRef(null);
   const { showAlert } = useAlert();
   const { isLoggedIn, isAdmin } = useAuth();
@@ -46,12 +47,26 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     }
   }, [showAlert]);
 
+  const fetchOrderPause = useCallback(async () => {
+    try {
+      const data = await apiRequest('/menu/order-pause');
+      if (!data || typeof data !== 'object') return;
+      setOrderPause(data);
+    } catch (_error) {
+      // Silent: display board should still work even if pause API fails.
+    }
+  }, []);
+
   useEffect(() => {
     if (!isLoggedIn || !isAdmin) return;
     fetchOrders({ initial: true });
-    const timer = setInterval(() => fetchOrders({ initial: false }), REFRESH_INTERVAL_MS);
+    fetchOrderPause();
+    const timer = setInterval(() => {
+      fetchOrders({ initial: false });
+      fetchOrderPause();
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [isAdmin, isLoggedIn, fetchOrders]);
+  }, [isAdmin, isLoggedIn, fetchOrders, fetchOrderPause]);
 
   const preparingOrders = useMemo(
     () => orders
@@ -90,6 +105,12 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     return null;
   }
 
+  const shouldShowPauseBanner = Boolean(orderPause?.is_paused_now)
+    && (orderPause?.show_on_display_board === undefined ? true : Boolean(orderPause?.show_on_display_board));
+  const pauseUntil = String(orderPause?.end_time || '').slice(0, 5);
+  const pauseTimezone = String(orderPause?.timezone || '');
+  const pauseMessage = String(orderPause?.message || '').trim();
+
   return (
     <div className={`display-board-page ${kiosk ? 'kiosk-mode' : ''}`}>
       <div className="display-board-container" ref={containerRef}>
@@ -101,6 +122,17 @@ function AdminDisplayBoardPage({ kiosk = false }) {
             {lastUpdated ? `Sync: ${lastUpdated.toLocaleTimeString()}` : '...'}
           </div>
         </header>
+
+        {shouldShowPauseBanner && (
+          <div className="order-pause-banner" role="status" aria-live="polite">
+            <div className="order-pause-title">ORDERS STOPPED</div>
+            <div className="order-pause-subtitle">
+              {pauseUntil ? `Orders are stopped till ${pauseUntil}` : 'Orders are temporarily stopped.'}
+              {pauseTimezone ? ` (${pauseTimezone})` : ''}
+            </div>
+            {pauseMessage ? <div className="order-pause-message">{pauseMessage}</div> : null}
+          </div>
+        )}
 
         {loading ? (
           <div className="loader">INITIALIZING...</div>

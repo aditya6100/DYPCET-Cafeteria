@@ -76,7 +76,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 enabled: false,
                 start_time: '13:00',
                 end_time: '14:00',
-                message: 'Ordering is temporarily paused. Please try again later.'
+                message: 'Ordering is temporarily paused. Please try again later.',
+                show_on_display_board: true
             };
         }
 
@@ -86,14 +87,16 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 enabled: Boolean(parsed?.enabled),
                 start_time: String(parsed?.start_time || '13:00').slice(0, 5),
                 end_time: String(parsed?.end_time || '14:00').slice(0, 5),
-                message: String(parsed?.message || 'Ordering is temporarily paused. Please try again later.').slice(0, 200)
+                message: String(parsed?.message || 'Ordering is temporarily paused. Please try again later.').slice(0, 200),
+                show_on_display_board: parsed?.show_on_display_board === undefined ? true : Boolean(parsed?.show_on_display_board)
             };
         } catch (_error) {
             return {
                 enabled: false,
                 start_time: '13:00',
                 end_time: '14:00',
-                message: 'Ordering is temporarily paused. Please try again later.'
+                message: 'Ordering is temporarily paused. Please try again later.',
+                show_on_display_board: true
             };
         }
     };
@@ -520,8 +523,11 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         const end_time = String(req.body?.end_time || '14:00').slice(0, 5);
         const message = String(req.body?.message || '').trim().slice(0, 200)
             || 'Ordering is temporarily paused. Please try again later.';
+        const show_on_display_board = req.body?.show_on_display_board === undefined
+            ? true
+            : Boolean(req.body?.show_on_display_board);
 
-        const payload = JSON.stringify({ enabled, start_time, end_time, message });
+        const payload = JSON.stringify({ enabled, start_time, end_time, message, show_on_display_board });
 
         await db.query(
             `INSERT INTO menu_settings (setting_key, setting_value)
@@ -538,7 +544,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
         res.json({
             message: 'Order pause settings updated successfully.',
-            settings: { enabled, start_time, end_time, message, is_paused_now: isPausedNow, timezone: APP_TIMEZONE }
+            settings: { enabled, start_time, end_time, message, show_on_display_board, is_paused_now: isPausedNow, timezone: APP_TIMEZONE }
         });
     }));
 

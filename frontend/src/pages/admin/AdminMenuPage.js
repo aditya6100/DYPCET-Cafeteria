@@ -33,7 +33,8 @@ function AdminMenuPage() {
     enabled: false,
     start_time: '13:00',
     end_time: '14:00',
-    message: 'Ordering is temporarily paused. Please try again later.'
+    message: 'Ordering is temporarily paused. Please try again later.',
+    show_on_display_board: true
   });
   const [savingOrderPause, setSavingOrderPause] = useState(false);
   const [categoryTimings, setCategoryTimings] = useState({});
@@ -80,7 +81,8 @@ function AdminMenuPage() {
         enabled: Boolean(pauseData?.enabled),
         start_time: String(pauseData?.start_time || '13:00').slice(0, 5),
         end_time: String(pauseData?.end_time || '14:00').slice(0, 5),
-        message: String(pauseData?.message || 'Ordering is temporarily paused. Please try again later.')
+        message: String(pauseData?.message || 'Ordering is temporarily paused. Please try again later.'),
+        show_on_display_board: pauseData?.show_on_display_board === undefined ? true : Boolean(pauseData?.show_on_display_board)
       });
 
       const timingMap = {};
@@ -228,7 +230,8 @@ function AdminMenuPage() {
         enabled: Boolean(orderPause.enabled),
         start_time: String(orderPause.start_time || '13:00').slice(0, 5),
         end_time: String(orderPause.end_time || '14:00').slice(0, 5),
-        message: String(orderPause.message || '').trim()
+        message: String(orderPause.message || '').trim(),
+        show_on_display_board: orderPause?.show_on_display_board === undefined ? true : Boolean(orderPause?.show_on_display_board)
       };
       await apiRequest('/menu/order-pause', 'PUT', payload);
       showAlert('Order pause settings updated.', 'success');
@@ -635,6 +638,14 @@ function AdminMenuPage() {
               onChange={(e) => setOrderPause((prev) => ({ ...prev, enabled: e.target.checked }))}
             />
             Enable pause
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={orderPause?.show_on_display_board === undefined ? true : Boolean(orderPause?.show_on_display_board)}
+              onChange={(e) => setOrderPause((prev) => ({ ...prev, show_on_display_board: e.target.checked }))}
+            />
+            Show on display board
           </label>
           <input
             type="time"
