@@ -105,17 +105,24 @@ function CartPage() {
     setOrderInstruction(normalizedInstruction);
 
     if (paymentMode === 'cash') {
-      const fallbackName = String(guestName || '').trim();
-      const fallbackMobile = String(guestMobile || '').replace(/\D/g, '').slice(-10);
-
-      const trimmedName = String((isLoggedIn ? (user?.name || fallbackName) : fallbackName) || '').trim();
-      const mobileDigits = String((isLoggedIn ? (user?.mobile_no || fallbackMobile) : fallbackMobile) || '').replace(/\D/g, '').slice(-10);
+      const trimmedName = String((isLoggedIn ? user?.name : guestName) || '').trim();
+      const mobileDigits = String((isLoggedIn ? user?.mobile_no : guestMobile) || '').replace(/\D/g, '').slice(-10);
 
       if (!trimmedName) {
+        if (isLoggedIn) {
+          showAlert('Your profile name is missing. Please update your profile to place a cash order.', 'error');
+          navigate('/profile');
+          return;
+        }
         showAlert('Please enter your name for cash orders.', 'error');
         return;
       }
       if (!/^\d{10}$/.test(mobileDigits)) {
+        if (isLoggedIn) {
+          showAlert('Your profile mobile number is missing/invalid. Please update your profile to place a cash order.', 'error');
+          navigate('/profile');
+          return;
+        }
         showAlert('Please enter a valid 10-digit mobile number for cash orders.', 'error');
         return;
       }
@@ -127,8 +134,7 @@ function CartPage() {
           total_amount: totalAmountWithTaxes,
           order_instruction: normalizedInstruction
         };
-        const profileMobileDigits = String(user?.mobile_no || '').replace(/\D/g, '').slice(-10);
-        if (!isLoggedIn || !String(user?.name || '').trim() || !/^\d{10}$/.test(profileMobileDigits)) {
+        if (!isLoggedIn) {
           payload.customer_name = trimmedName;
           payload.customer_mobile = mobileDigits;
         }
@@ -331,7 +337,7 @@ function CartPage() {
               </label>
             </div>
 
-            {paymentMode === 'cash' && (!isLoggedIn || !String(user?.name || '').trim() || !String(user?.mobile_no || '').trim()) && (
+            {!isLoggedIn && paymentMode === 'cash' && (
               <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.5rem' }}>
                 <input
                   type="text"
@@ -346,11 +352,6 @@ function CartPage() {
                   maxLength={10}
                   onChange={(e) => setGuestMobile(e.target.value.replace(/\\D/g, ''))}
                 />
-                {isLoggedIn && (
-                  <p style={{ margin: 0, color: '#666', fontSize: '0.9rem' }}>
-                    Your profile is missing name/mobile. Please enter details to place a cash order.
-                  </p>
-                )}
               </div>
             )}
 
