@@ -43,6 +43,7 @@ function CartPage() {
   const [guestName, setGuestName] = useState('');
   const [guestMobile, setGuestMobile] = useState('');
   const [showCashDetailsModal, setShowCashDetailsModal] = useState(false);
+  const [guestDetailsMode, setGuestDetailsMode] = useState('cash'); // cash | online
 
   const totalAmountWithTaxes = cartTotal;
 
@@ -90,9 +91,13 @@ function CartPage() {
     }
 
     if (paymentMode === 'online' && !isLoggedIn) {
-      showAlert('Please log in to pay online.', 'error');
-      navigate('/login');
-      return;
+      const name = String(guestName || '').trim();
+      const mobile = String(guestMobile || '').replace(/\D/g, '').slice(-10);
+      if (!name || !/^\d{10}$/.test(mobile)) {
+        setGuestDetailsMode('online');
+        setShowCashDetailsModal(true);
+        return;
+      }
     }
 
     const instructionInput = window.prompt(
@@ -115,6 +120,7 @@ function CartPage() {
           navigate('/profile');
           return;
         }
+        setGuestDetailsMode('cash');
         setShowCashDetailsModal(true);
         return;
       }
@@ -124,6 +130,7 @@ function CartPage() {
           navigate('/profile');
           return;
         }
+        setGuestDetailsMode('cash');
         setShowCashDetailsModal(true);
         return;
       }
@@ -192,12 +199,19 @@ function CartPage() {
               total_amount: totalAmountWithTaxes,
               order_instruction: normalizedInstruction
             };
+            if (!isLoggedIn) {
+              verificationData.customer_name = String(guestName || '').trim();
+              verificationData.customer_mobile = String(guestMobile || '').replace(/\D/g, '').slice(-10);
+            }
             const result = await apiRequest('/orders/verify', 'POST', verificationData);
 
             if (result && result.orderId) {
               clearCart();
               showAlert('Order placed successfully!', 'success');
-              navigate(`/status/${result.orderId}`);
+              if (result.guestAccessToken) {
+                localStorage.setItem(`guest_order_${result.orderId}_token`, String(result.guestAccessToken));
+              }
+              navigate(`/status/${result.orderId}${isLoggedIn ? '' : '?guest=1'}`);
             } else {
               throw new Error('Order verification failed after payment.');
             }
@@ -213,8 +227,9 @@ function CartPage() {
           }
         },
         prefill: {
-          name: user.name,
-          email: user.email,
+          name: isLoggedIn ? user.name : guestName,
+          email: isLoggedIn ? user.email : '',
+          contact: isLoggedIn ? (user.mobile_no || '') : guestMobile,
         },
         theme: {
           color: '#3399CC',
@@ -231,12 +246,11 @@ function CartPage() {
 
   const handleSelectPaymentMode = (nextMode) => {
     setPaymentMode(nextMode);
-    if (nextMode !== 'cash') {
-      setShowCashDetailsModal(false);
-      return;
-    }
     if (!isLoggedIn) {
+      setGuestDetailsMode(nextMode);
       setShowCashDetailsModal(true);
+    } else {
+      setShowCashDetailsModal(false);
     }
   };
 
@@ -370,13 +384,13 @@ function CartPage() {
 
             {!isLoggedIn && paymentMode === 'cash' && (
               <p style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
-                You will be asked for Name and Mobile number (cash order details).
+                You will be asked for Name and Mobile number (required for guest checkout).
               </p>
             )}
 
             {paymentMode === 'online' && !isLoggedIn && (
-              <p style={{ marginTop: '0.5rem', color: '#b00020', fontSize: '0.9rem' }}>
-                Login is required for online payment.
+              <p style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
+                Guest online payment is allowed. You will be asked for Name and Mobile number.
               </p>
             )}
           </div>
@@ -409,8 +423,10 @@ function CartPage() {
           <div className="cash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cash-modal-header">
               <div>
-                <h3>Cash Order Details</h3>
-                <p>Enter your details to place an offline cash order.</p>
+                <h3>{guestDetailsMode === 'online' ? 'Online Order Details' : 'Cash Order Details'}</h3>
+                <p>
+                  Enter your details to place an {guestDetailsMode === 'online' ? 'online' : 'offline cash'} order.
+                </p>
               </div>
               <button type="button" className="cash-modal-close" onClick={handleCashModalCancel}>
                 ×

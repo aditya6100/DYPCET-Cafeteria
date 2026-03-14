@@ -131,6 +131,41 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         return ordersColumnCache.columns;
     };
 
+    const ensureGuestOrderTokensTable = async () => {
+        await db.query(
+            `CREATE TABLE IF NOT EXISTS guest_order_tokens (
+                order_id INT NOT NULL PRIMARY KEY,
+                token VARCHAR(80) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_guest_token (token)
+            )`
+        );
+    };
+
+    const setGuestOrderToken = async (orderId, token) => {
+        await ensureGuestOrderTokensTable();
+        await db.query(
+            `INSERT INTO guest_order_tokens (order_id, token)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE token = VALUES(token)`,
+            [orderId, token]
+        );
+    };
+
+    const getGuestOrderToken = async (orderId) => {
+        try {
+            await ensureGuestOrderTokensTable();
+            const rows = await db.query(
+                `SELECT token FROM guest_order_tokens WHERE order_id = ? LIMIT 1`,
+                [orderId]
+            );
+            return rows?.[0]?.token ? String(rows[0].token) : null;
+        } catch (error) {
+            console.error('Guest order token lookup failed:', error.message);
+            return null;
+        }
+    };
+
     const normalizeStatus = (status = '') => String(status).trim().toLowerCase();
 
     const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
@@ -520,8 +555,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
     // @desc    Create a new Razorpay order
     // @route   POST /api/orders
-    // @access  Protected
-    router.post('/', protect, asyncHandler(async (req, res) => {
+    // @access  Public (optional auth)
+    router.post('/', optionalProtect, asyncHandler(async (req, res) => {
         await ensureOrderingOpen(res);
         const { amount } = req.body;
 
@@ -552,8 +587,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
 
     // @desc    Verify payment and save order to DB
     // @route   POST /api/orders/verify
-    // @access  Protected
-    router.post('/verify', protect, asyncHandler(async (req, res) => {
+    // @access  Public (optional auth)
+    router.post('/verify', optionalProtect, asyncHandler(async (req, res) => {
         await ensureOrderingOpen(res);
         const {
             razorpay_order_id,
@@ -561,12 +596,41 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             razorpay_signature,
             items,
             total_amount,
-            order_instruction
+            order_instruction,
+            customer_name,
+            customer_mobile
         } = req.body;
-        const userId = req.user.id;
+
+        const isLoggedIn = Boolean(req.user?.id);
+        let userId = null;
+        let finalCustomerName = '';
+        let finalCustomerMobile = '';
+        let guestAccessToken = null;
+        const orderCols = await getOrdersColumns();
 
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !items || !total_amount) {
             throw new Error("Missing fields for payment verification.");
+        }
+
+        if (isLoggedIn) {
+            userId = Number(req.user.id);
+            finalCustomerName = String(req.user.name || '').trim();
+            finalCustomerMobile = String(req.user.mobile_no || '').trim();
+        } else {
+            finalCustomerName = String(customer_name || '').trim().slice(0, 100);
+            const mobileRaw = String(customer_mobile || '').trim();
+            const mobileDigits = mobileRaw.replace(/\D/g, '').slice(-10);
+            if (!finalCustomerName) {
+                res.status(400);
+                throw new Error('Customer name is required.');
+            }
+            if (!/^\d{10}$/.test(mobileDigits)) {
+                res.status(400);
+                throw new Error('Customer mobile number must be 10 digits.');
+            }
+            finalCustomerMobile = mobileDigits;
+            userId = await getOfflineGuestUserId();
+            guestAccessToken = crypto.randomBytes(24).toString('hex');
         }
 
         // 1. Verify Signature
@@ -583,21 +647,52 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         );
         const dailyToken = (tokenResult[0]?.count || 0) + 1;
 
-        // 3. Save the order using the CORRECT column names from the user's schema
-        const sql = "INSERT INTO orders (user_id, items, total, status, payment_id, transaction_id, order_instruction, token_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        // 3. Save the order using available columns (some DBs may not have newer columns)
         const itemsJson = JSON.stringify(items);
         const safeInstruction = typeof order_instruction === 'string'
             ? order_instruction.trim().slice(0, 500)
             : null;
-        const params = [userId, itemsJson, total_amount, 'Received', razorpay_payment_id, razorpay_order_id, safeInstruction || null, dailyToken];
+
+        const insertColumns = ['user_id', 'items', 'total', 'status', 'payment_id', 'transaction_id', 'customer_name', 'customer_mobile'];
+        const insertParams = [userId, itemsJson, total_amount, 'Received', razorpay_payment_id, razorpay_order_id, finalCustomerName || null, finalCustomerMobile || null];
+
+        if (safeInstruction && orderCols.has('order_instruction')) {
+            insertColumns.push('order_instruction');
+            insertParams.push(safeInstruction);
+        }
+        if (orderCols.has('payment_status')) {
+            insertColumns.push('payment_status');
+            insertParams.push('Paid');
+        }
+        if (orderCols.has('payment_method')) {
+            insertColumns.push('payment_method');
+            insertParams.push('ONLINE');
+        }
+        if (orderCols.has('order_source')) {
+            insertColumns.push('order_source');
+            insertParams.push('ONLINE');
+        }
+        if (orderCols.has('token_number')) {
+            insertColumns.push('token_number');
+            insertParams.push(dailyToken);
+        }
+
+        const sql = `INSERT INTO orders (${insertColumns.join(', ')}) VALUES (${insertColumns.map(() => '?').join(', ')})`;
 
         try {
-            const result = await db.query(sql, params);
+            const result = await db.query(sql, insertParams);
             const insertId = result?.insertId ?? result?.[0]?.insertId ?? null;
             if (insertId) {
+                if (guestAccessToken) {
+                    if (orderCols.has('guest_access_token')) {
+                        await db.query(`UPDATE orders SET guest_access_token = ? WHERE id = ?`, [guestAccessToken, insertId]);
+                    }
+                    await setGuestOrderToken(insertId, guestAccessToken);
+                }
                 res.status(201).json({
                     message: "Order placed successfully!",
-                    orderId: insertId
+                    orderId: insertId,
+                    guestAccessToken: guestAccessToken || null
                 });
             } else {
                 res.status(500);
@@ -732,6 +827,10 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             res.status(500);
             throw new Error('Failed to create offline order.');
         }
+
+        if (guestAccessToken) {
+            await setGuestOrderToken(insertId, guestAccessToken);
+        }
         res.status(201).json({
             message: 'Offline order created. Please pay at the counter to start preparation.',
             orderId: insertId,
@@ -784,7 +883,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             res.status(404);
             throw new Error('Order not found.');
         }
-        if (String(order.guest_access_token || '') !== token) {
+        const storedToken = String(order.guest_access_token || '') || (await getGuestOrderToken(orderId)) || '';
+        if (storedToken !== token) {
             res.status(403);
             throw new Error('Invalid guest token.');
         }
