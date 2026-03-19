@@ -97,9 +97,8 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [ttsUnlocked, setTtsUnlocked] = useState(() => localStorage.getItem('tts_unlocked') === '1');
   const [voices, setVoices] = useState(() => getSpeechVoices());
   const containerRef = useRef(null);
-  const announcedReadyRef = useRef(new Set());
-  const initializedReadyRef = useRef(false);
   const lastAnnouncementIdRef = useRef(0);
+  const lastStatusByIdRef = useRef(new Map());
   const announcementDirtyRef = useRef(false);
   const { showAlert } = useAlert();
   const { isLoggedIn, isAdmin } = useAuth();
@@ -244,24 +243,38 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   );
 
   useEffect(() => {
-    if (!initializedReadyRef.current) {
-      if (loading) return;
-      readyOrders.forEach((order) => {
-        announcedReadyRef.current.add(Number(order.id));
+    if (loading) return;
+
+    const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
+    const isReadyStatus = (status) => status === 'ready' || status === 'completed';
+
+    const map = lastStatusByIdRef.current;
+    if (map.size === 0) {
+      (orders || []).forEach((order) => {
+        const id = Number(order?.id);
+        if (!Number.isFinite(id)) return;
+        map.set(id, normalizeStatus(order?.status));
       });
-      initializedReadyRef.current = true;
       return;
     }
 
-    const newlyReady = readyOrders
-      .filter((order) => !announcedReadyRef.current.has(Number(order.id)))
-      .slice(0, 3);
+    const transitions = [];
+    (orders || []).forEach((order) => {
+      const id = Number(order?.id);
+      if (!Number.isFinite(id)) return;
+      const next = normalizeStatus(order?.status);
+      const prev = map.get(id);
+      map.set(id, next);
+      if (prev && !isReadyStatus(prev) && isReadyStatus(next)) {
+        transitions.push(order);
+      }
+    });
 
-    if (newlyReady.length === 0) return;
+    if (transitions.length === 0) return;
 
+    transitions.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     const run = async () => {
-      for (const order of newlyReady) {
-        announcedReadyRef.current.add(Number(order.id));
+      for (const order of transitions.slice(0, 3)) {
         const orderNo = getDisplayOrderNo(order);
         // eslint-disable-next-line no-await-in-loop
         await announceOrderReady(orderNo);
@@ -269,7 +282,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     };
 
     run();
-  }, [announceOrderReady, loading, readyOrders]);
+  }, [announceOrderReady, loading, orders]);
 
   useEffect(() => {
     const announcementId = Number(displaySettings?.announcement_id || 0);
