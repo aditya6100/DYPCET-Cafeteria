@@ -20,6 +20,11 @@ export function saveUserSession(userData) {
         faculty_id: userData.faculty_id ?? null,
     };
     localStorage.setItem('user', JSON.stringify(user));
+    try {
+        window.dispatchEvent(new Event('auth:changed'));
+    } catch (_error) {
+        // ignore
+    }
 }
 
 export function getToken() {
@@ -44,4 +49,9 @@ export function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('cart'); // Clear cart on logout
+    try {
+        window.dispatchEvent(new Event('auth:changed'));
+    } catch (_error) {
+        // ignore
+    }
 }

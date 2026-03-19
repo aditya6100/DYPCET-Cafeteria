@@ -27,6 +27,20 @@ export const AuthProvider = ({ children }) => {
   }, [user, token]);
 
   useEffect(() => {
+    const syncFromStorage = () => {
+      setUser(getLocalUser());
+      setToken(localStorage.getItem('token'));
+    };
+
+    window.addEventListener('storage', syncFromStorage);
+    window.addEventListener('auth:changed', syncFromStorage);
+    return () => {
+      window.removeEventListener('storage', syncFromStorage);
+      window.removeEventListener('auth:changed', syncFromStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     // Refresh user profile (mobile_no, etc.) when a token exists.
     // This prevents stale sessions from missing fields required for ordering.
     if (!token) return;
