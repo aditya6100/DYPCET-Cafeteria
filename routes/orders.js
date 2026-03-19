@@ -65,14 +65,20 @@ const createA5BillPdfBuffer = (billData) => {
     addText('Sub Total', 264, totalsY, 10);
     addText(billData.subTotal, 338, totalsY, 10);
 
-    addText('Grand Total', 264, totalsY - 16, 10, 'F2');
-    addText(`Rs ${billData.grandTotal}`, 334, totalsY - 16, 11, 'F2');
+    addText('CGST (2.5%)', 264, totalsY - 16, 10);
+    addText(billData.cgstAmount, 338, totalsY - 16, 10);
 
-    addLine(20, totalsY - 24, 400, totalsY - 24);
+    addText('SGST (2.5%)', 264, totalsY - 32, 10);
+    addText(billData.sgstAmount, 338, totalsY - 32, 10);
 
-    addText(`Paid via ${billData.paymentMode}`, 24, totalsY - 40, 10);
-    addText('FSSAI Lic No. 21520199000172', 24, totalsY - 58, 9);
-    addText('!!! Thank You. Visit Again !!!!', 118, totalsY - 78, 11, 'F2');
+    addText('Grand Total', 264, totalsY - 48, 10, 'F2');
+    addText(`Rs ${billData.grandTotal}`, 334, totalsY - 48, 11, 'F2');
+
+    addLine(20, totalsY - 56, 400, totalsY - 56);
+
+    addText(`Paid via ${billData.paymentMode}`, 24, totalsY - 72, 10);
+    addText('FSSAI Lic No. 21520199000172', 24, totalsY - 90, 9);
+    addText('!!! Thank You. Visit Again !!!!', 118, totalsY - 110, 11, 'F2');
 
     const streamData = `${stream.join('\n')}\n`;
 
@@ -108,6 +114,38 @@ const createA5BillPdfBuffer = (billData) => {
 module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const router = express.Router();
     const { protect, optionalProtect, admin } = auth;
+
+    const CGST_RATE = 0.025;
+    const SGST_RATE = 0.025;
+    const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+    const normalizeOrderItemsForTotals = (rawItems) => {
+        if (!Array.isArray(rawItems)) return [];
+        return rawItems
+            .map((item) => ({
+                ...item,
+                quantity: Number(item?.quantity ?? 0),
+                price: Number(item?.price ?? 0),
+            }))
+            .filter((item) => (
+                Number.isFinite(item.quantity)
+                && item.quantity > 0
+                && Number.isFinite(item.price)
+                && item.price >= 0
+            ));
+    };
+
+    const computeTotalsFromItems = (rawItems) => {
+        const items = normalizeOrderItemsForTotals(rawItems);
+        const subTotal = roundMoney(items.reduce(
+            (sum, item) => sum + (item.price * item.quantity),
+            0
+        ));
+        const cgstAmount = roundMoney(subTotal * CGST_RATE);
+        const sgstAmount = roundMoney(subTotal * SGST_RATE);
+        const grandTotal = roundMoney(subTotal + cgstAmount + sgstAmount);
+        return { items, subTotal, cgstAmount, sgstAmount, grandTotal };
+    };
 
     // Cache orders table columns to support deployments where schema migrations (ALTER TABLE)
     // are not permitted. Used to avoid selecting/inserting unknown columns.
@@ -558,15 +596,17 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @access  Public (optional auth)
     router.post('/', optionalProtect, asyncHandler(async (req, res) => {
         await ensureOrderingOpen(res);
-        const { amount } = req.body;
+        const requestedAmount = Number(req.body?.amount || 0);
+        const { items: normalizedItems, grandTotal } = computeTotalsFromItems(req.body?.items);
+        const amountToCharge = normalizedItems.length > 0 ? grandTotal : requestedAmount;
 
-        if (!amount || amount <= 0) {
+        if (!Number.isFinite(amountToCharge) || amountToCharge <= 0) {
             res.status(400);
-            throw new Error('Valid amount is required to create an order.');
+            throw new Error('Valid items or amount is required to create an order.');
         }
 
         const options = {
-            amount: Math.round(amount * 100), // amount in the smallest currency unit (paise)
+            amount: Math.round(amountToCharge * 100), // amount in the smallest currency unit (paise)
             currency: "INR",
             receipt: `receipt_order_${new Date().getTime()}`,
         };
@@ -577,7 +617,10 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
                 res.status(500);
                 throw new Error('Failed to create Razorpay order.');
             }
-            res.status(200).json(order);
+            res.status(200).json({
+                ...order,
+                computed_amount: amountToCharge
+            });
         } catch (error) {
             console.error("Razorpay order creation failed:", error);
             res.status(500);
@@ -608,8 +651,23 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         let guestAccessToken = null;
         const orderCols = await getOrdersColumns();
 
-        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !items || !total_amount) {
+        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !items) {
             throw new Error("Missing fields for payment verification.");
+        }
+
+        const totals = computeTotalsFromItems(items);
+        if (totals.items.length === 0 || !Number.isFinite(totals.grandTotal) || totals.grandTotal <= 0) {
+            res.status(400);
+            throw new Error('Valid items are required.');
+        }
+
+        const clientTotal = Number(total_amount || 0);
+        if (Number.isFinite(clientTotal) && clientTotal > 0) {
+            const delta = Math.abs(roundMoney(clientTotal) - totals.grandTotal);
+            if (delta > 0.05) {
+                res.status(400);
+                throw new Error('Order total mismatch. Please refresh and try again.');
+            }
         }
 
         if (isLoggedIn) {
@@ -654,7 +712,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             : null;
 
         const insertColumns = ['user_id', 'items', 'total', 'status', 'payment_id', 'transaction_id', 'customer_name', 'customer_mobile'];
-        const insertParams = [userId, itemsJson, total_amount, 'Received', razorpay_payment_id, razorpay_order_id, finalCustomerName || null, finalCustomerMobile || null];
+        const insertParams = [userId, itemsJson, totals.grandTotal, 'Received', razorpay_payment_id, razorpay_order_id, finalCustomerName || null, finalCustomerMobile || null];
 
         if (safeInstruction && orderCols.has('order_instruction')) {
             insertColumns.push('order_instruction');
@@ -712,14 +770,23 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         await ensureOrderingOpen(res);
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
-        const totalAmount = Number(req.body?.total_amount || 0);
+        const totals = computeTotalsFromItems(items);
+        const totalAmount = totals.grandTotal;
+        const clientTotal = Number(req.body?.total_amount || 0);
         const orderInstruction = typeof req.body?.order_instruction === 'string'
             ? req.body.order_instruction.trim().slice(0, 500)
             : null;
 
-        if (items.length === 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
+        if (totals.items.length === 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
             res.status(400);
-            throw new Error('Valid items and total_amount are required.');
+            throw new Error('Valid items are required.');
+        }
+        if (Number.isFinite(clientTotal) && clientTotal > 0) {
+            const delta = Math.abs(roundMoney(clientTotal) - totalAmount);
+            if (delta > 0.05) {
+                res.status(400);
+                throw new Error('Order total mismatch. Please refresh and try again.');
+            }
         }
 
         const isLoggedIn = Boolean(req.user?.id);
@@ -926,10 +993,19 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
-        const totalAmount = Number(req.body?.total_amount || 0);
-        if (items.length === 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
+        const totals = computeTotalsFromItems(items);
+        const totalAmount = totals.grandTotal;
+        const clientTotal = Number(req.body?.total_amount || 0);
+        if (totals.items.length === 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
             res.status(400);
-            throw new Error('Valid items and total_amount are required to initiate PhonePe payment.');
+            throw new Error('Valid items are required to initiate PhonePe payment.');
+        }
+        if (Number.isFinite(clientTotal) && clientTotal > 0) {
+            const delta = Math.abs(roundMoney(clientTotal) - totalAmount);
+            if (delta > 0.05) {
+                res.status(400);
+                throw new Error('Order total mismatch. Please refresh and try again.');
+            }
         }
 
         const merchantOrderId = `DYPCET_${Date.now()}_${req.user.id}_${Math.floor(Math.random() * 100000)}`;
@@ -1526,10 +1602,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
         }
 
-        const subtotal = (parsedItems || []).reduce(
-            (sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)),
-            0
-        );
+        const totals = computeTotalsFromItems(parsedItems || []);
+        const subtotal = totals.subTotal;
         const total = Number(order.total_amount || 0);
         const orderDate = new Date(order.timestamp || Date.now());
         const dd = String(orderDate.getDate()).padStart(2, '0');
@@ -1554,6 +1628,17 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             ? 'Other [UPI]'
             : 'Cash';
 
+        let cgstAmount = 0;
+        let sgstAmount = 0;
+        if (Number.isFinite(total) && total > 0 && subtotal > 0 && total > (subtotal + 0.009)) {
+            const baseCgst = roundMoney(subtotal * CGST_RATE);
+            cgstAmount = baseCgst;
+            sgstAmount = roundMoney(total - subtotal - baseCgst);
+            if (sgstAmount < 0) {
+                sgstAmount = 0;
+            }
+        }
+
         const pdfBuffer = createA5BillPdfBuffer({
             customerName: order.customer_name || req.user.name || 'Customer',
             orderDate: `${dd}/${mm}/${yy}`,
@@ -1564,6 +1649,8 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             items: billItems,
             totalQty,
             subTotal: subtotal.toFixed(2),
+            cgstAmount: cgstAmount.toFixed(2),
+            sgstAmount: sgstAmount.toFixed(2),
             grandTotal: total.toFixed(2),
             paymentMode
         });

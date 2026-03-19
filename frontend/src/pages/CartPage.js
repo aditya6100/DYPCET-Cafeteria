@@ -6,6 +6,10 @@ import { useAlert } from '../hooks/useAlert';
 import apiRequest from '../utils/api';
 
 const RAZORPAY_SCRIPT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
+const CGST_RATE = 0.025;
+const SGST_RATE = 0.025;
+
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
 // Dynamically load Razorpay script only once.
 const loadRazorpayScript = () => {
@@ -45,7 +49,10 @@ function CartPage() {
   const [showCashDetailsModal, setShowCashDetailsModal] = useState(false);
   const [guestDetailsMode, setGuestDetailsMode] = useState('cash'); // cash | online
 
-  const totalAmountWithTaxes = cartTotal;
+  const subtotalAmount = roundMoney(cartTotal);
+  const cgstAmount = roundMoney(subtotalAmount * CGST_RATE);
+  const sgstAmount = roundMoney(subtotalAmount * SGST_RATE);
+  const totalAmountWithTaxes = roundMoney(subtotalAmount + cgstAmount + sgstAmount);
 
   // Cart supports guest checkout (cash), so do not force-login on page load.
 
@@ -139,6 +146,9 @@ function CartPage() {
       try {
         const payload = {
           items: cart,
+          sub_total: subtotalAmount,
+          cgst_amount: cgstAmount,
+          sgst_amount: sgstAmount,
           total_amount: totalAmountWithTaxes,
           order_instruction: normalizedInstruction
         };
@@ -176,7 +186,7 @@ function CartPage() {
 
     try {
       const [order, razorpayConfig] = await Promise.all([
-        apiRequest('/orders', 'POST', { amount: totalAmountWithTaxes }),
+        apiRequest('/orders', 'POST', { items: cart, amount: totalAmountWithTaxes }),
         apiRequest('/orders/razorpay/config')
       ]);
       const razorpayKey = String(razorpayConfig?.key_id || '').trim();
@@ -196,6 +206,9 @@ function CartPage() {
             const verificationData = {
               ...response,
               items: cart,
+              sub_total: subtotalAmount,
+              cgst_amount: cgstAmount,
+              sgst_amount: sgstAmount,
               total_amount: totalAmountWithTaxes,
               order_instruction: normalizedInstruction
             };
@@ -339,7 +352,15 @@ function CartPage() {
           <h3>Order Summary</h3>
           <div className="summary-row">
             <span>Subtotal</span>
-            <span id="cart-subtotal">INR {cartTotal.toFixed(2)}</span>
+            <span id="cart-subtotal">INR {subtotalAmount.toFixed(2)}</span>
+          </div>
+          <div className="summary-row">
+            <span>CGST (2.5%)</span>
+            <span>INR {cgstAmount.toFixed(2)}</span>
+          </div>
+          <div className="summary-row">
+            <span>SGST (2.5%)</span>
+            <span>INR {sgstAmount.toFixed(2)}</span>
           </div>
           <div className="summary-row total">
             <span>Total</span>
