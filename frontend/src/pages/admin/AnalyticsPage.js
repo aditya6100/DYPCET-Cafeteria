@@ -349,9 +349,9 @@ function AnalyticsPage() {
         <div className="analytics-two-col">
           <article className="analytics-panel">
             <h4>Day-wise Report</h4>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span style={{ color: '#3a526d' }}>Select Date</span>
+            <div className="analytics-toolbar">
+              <label>
+                <span>Select Date</span>
                 <input
                   type="date"
                   value={selectedDate}
@@ -365,7 +365,7 @@ function AnalyticsPage() {
               <p className="muted">No day report available.</p>
             ) : (
               <>
-                <div className="analytics-grid" style={{ marginBottom: 12 }}>
+                <div className="analytics-grid">
                   <article className="analytics-card">
                     <h4>Orders</h4>
                     <p>{Number(dayReport?.totals?.totalOrders || 0)}</p>
@@ -392,7 +392,7 @@ function AnalyticsPage() {
                   </article>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: 12 }}>
+                <div className="analytics-actions">
                   <button
                     type="button"
                     className="button"
