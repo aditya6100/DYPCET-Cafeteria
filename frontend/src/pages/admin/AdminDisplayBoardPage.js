@@ -70,21 +70,7 @@ const speakText = (text, voice = null) => {
   }
 };
 
-const isSameLocalDate = (a, b) => (
-  a.getFullYear() === b.getFullYear()
-  && a.getMonth() === b.getMonth()
-  && a.getDate() === b.getDate()
-);
-
-const getDisplayOrderNo = (order) => {
-  const id = order?.id;
-  const token = order?.token_number;
-  const ts = order?.timestamp ? new Date(order.timestamp) : null;
-  if (!ts || Number.isNaN(ts.getTime())) return token || id;
-  const today = new Date();
-  // Token numbers are per-day. For previous days, show the global order id instead.
-  return isSameLocalDate(ts, today) ? (token || id) : id;
-};
+const getDisplayOrderNo = (order) => (order?.id);
 
 function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [orders, setOrders] = useState([]);
