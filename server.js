@@ -36,6 +36,16 @@ app.use(errorHandler);
 
 
 // --- Server ---
-app.listen(config.port, () => {
-    console.log(`Server running on http://localhost:${config.port}`);
+const port = Number(process.env.PORT || config.port || 3000);
+const host = '0.0.0.0';
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+});
+
+app.listen(port, host, () => {
+    console.log(`Server running on http://${host}:${port}`);
 });
