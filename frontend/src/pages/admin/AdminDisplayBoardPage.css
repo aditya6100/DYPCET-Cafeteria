@@ -159,6 +159,19 @@
   animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+.order-number-card.clickable {
+  cursor: pointer;
+}
+
+.order-number-card.clickable:hover {
+  transform: translateY(-2px);
+}
+
+.order-number-card.clickable:focus {
+  outline: 3px solid #F47F20;
+  outline-offset: 2px;
+}
+
 .ready .order-number-card { border-color: #1b5e20; color: #1b5e20; box-shadow: 0 12px 0 #1b5e20; }
 .preparing .order-number-card { border-color: #E65100; color: #E65100; box-shadow: 0 12px 0 #E65100; }
 

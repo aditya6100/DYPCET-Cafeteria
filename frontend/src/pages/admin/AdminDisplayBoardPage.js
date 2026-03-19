@@ -187,6 +187,26 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const preferredVoice = useMemo(() => pickPreferredVoice(voices), [voices]);
   const isTtsSupported = Boolean(window.speechSynthesis && window.SpeechSynthesisUtterance);
 
+  const announceOrderReady = useCallback(async (orderNo) => {
+    const settings = displaySettings || {};
+    const repeatCount = Math.round(clampNumber(settings.ready_repeat_count, 1, 10, 3));
+    const intervalMs = Math.round(clampNumber(settings.ready_interval_ms, 300, 4000, 1200));
+    const soundEnabled = settings.sound_enabled === undefined ? true : Boolean(settings.sound_enabled);
+    const ttsEnabled = Boolean(settings.tts_enabled);
+
+    for (let i = 0; i < repeatCount; i += 1) {
+      if (soundEnabled) {
+        // eslint-disable-next-line no-await-in-loop
+        await playBeep({ durationMs: 180, frequency: 880, volume: 0.12 });
+      }
+      if (ttsEnabled && isTtsSupported && ttsUnlocked) {
+        speakText(`Order number ${orderNo} is ready`, preferredVoice);
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }, [displaySettings, isTtsSupported, preferredVoice, ttsUnlocked]);
+
   useEffect(() => {
     if (!publicMode && (!isLoggedIn || !isAdmin)) return;
     fetchOrders({ initial: true });
@@ -228,13 +248,8 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   );
 
   useEffect(() => {
-    const settings = displaySettings || {};
-    const repeatCount = Math.round(clampNumber(settings.ready_repeat_count, 1, 10, 3));
-    const intervalMs = Math.round(clampNumber(settings.ready_interval_ms, 300, 4000, 1200));
-    const soundEnabled = settings.sound_enabled === undefined ? true : Boolean(settings.sound_enabled);
-    const ttsEnabled = Boolean(settings.tts_enabled);
-
     if (!initializedReadyRef.current) {
+      if (loading) return;
       readyOrders.forEach((order) => {
         announcedReadyRef.current.add(Number(order.id));
       });
@@ -252,22 +267,13 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
       for (const order of newlyReady) {
         announcedReadyRef.current.add(Number(order.id));
         const orderNo = order.token_number || order.id;
-        for (let i = 0; i < repeatCount; i += 1) {
-          if (soundEnabled) {
-            // eslint-disable-next-line no-await-in-loop
-            await playBeep({ durationMs: 180, frequency: 880, volume: 0.12 });
-          }
-          if (ttsEnabled && isTtsSupported && ttsUnlocked) {
-            speakText(`Order number ${orderNo} is ready`, preferredVoice);
-          }
-          // eslint-disable-next-line no-await-in-loop
-          await new Promise((resolve) => setTimeout(resolve, intervalMs));
-        }
+        // eslint-disable-next-line no-await-in-loop
+        await announceOrderReady(orderNo);
       }
     };
 
     run();
-  }, [displaySettings, isTtsSupported, preferredVoice, readyOrders, ttsUnlocked]);
+  }, [announceOrderReady, loading, readyOrders]);
 
   useEffect(() => {
     const announcementId = Number(displaySettings?.announcement_id || 0);
@@ -300,6 +306,16 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
       return;
     }
     speakText('Test announcement. DYPCET cafeteria display board.', preferredVoice);
+  };
+
+  const handleManualAnnounce = (order) => {
+    if (publicMode) return;
+    const orderNo = order?.token_number || order?.id;
+    if (!orderNo) return;
+    if (Boolean(displaySettings?.tts_enabled) && isTtsSupported && !ttsUnlocked) {
+      showAlert('Tap "Enable Voice" once to allow announcements on this device.', 'info');
+    }
+    announceOrderReady(orderNo);
   };
 
   const handleSaveSettings = async () => {
@@ -410,7 +426,20 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
                   <div className="empty-msg">Waiting...</div>
                 ) : (
                   readyOrders.map((order) => (
-                    <div key={`ready-${order.id}`} className="order-number-card">
+                    <div
+                      key={`ready-${order.id}`}
+                      className={`order-number-card ${!publicMode ? 'clickable' : ''}`}
+                      role={!publicMode ? 'button' : undefined}
+                      tabIndex={!publicMode ? 0 : undefined}
+                      onClick={!publicMode ? () => handleManualAnnounce(order) : undefined}
+                      onKeyDown={!publicMode ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleManualAnnounce(order);
+                        }
+                      } : undefined}
+                      title={!publicMode ? 'Click to announce' : undefined}
+                    >
                       #{order.token_number || order.id}
                     </div>
                   ))
