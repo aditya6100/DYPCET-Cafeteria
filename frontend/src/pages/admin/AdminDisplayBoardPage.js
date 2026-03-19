@@ -134,6 +134,10 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
       }
       setLastUpdated(new Date());
     } catch (error) {
+      if (error?.statusCode === 401 || String(error?.message || '').toLowerCase().includes('unauthorized')) {
+        // apiRequest() already logs out on 401; avoid noisy alerts during redirect.
+        return;
+      }
       if (initial) {
         showAlert(`Could not load display board: ${error.message}`, 'error');
       }
