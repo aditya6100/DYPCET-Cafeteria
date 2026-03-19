@@ -19,6 +19,15 @@ function AdminOrdersPage() {
   const [refundNoteInput, setRefundNoteInput] = useState('');
   const [refundActionLoading, setRefundActionLoading] = useState(false);
   const [refundAuditLogs, setRefundAuditLogs] = useState([]);
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [savingOrderEdit, setSavingOrderEdit] = useState(false);
+  const [orderEditForm, setOrderEditForm] = useState({
+    token_number: '',
+    customer_name: '',
+    customer_mobile: '',
+    order_instruction: '',
+    total_amount: '',
+  });
   const [stats, setStats] = useState({
     totalOrders: 0,
     pendingOrders: 0,
@@ -38,6 +47,7 @@ function AdminOrdersPage() {
       const needle = search.toLowerCase();
       filtered = filtered.filter(o =>
         o.id.toString().includes(search) ||
+        String(o.token_number || '').includes(search) ||
         (o.user_name && o.user_name.toLowerCase().includes(needle)) ||
         (o.user_email && o.user_email.toLowerCase().includes(needle)) ||
         (o.customer_name && o.customer_name.toLowerCase().includes(needle)) ||
@@ -165,6 +175,14 @@ function AdminOrdersPage() {
 
   const openOrderDetails = async (order) => {
     setSelectedOrder(order);
+    setIsEditingOrder(false);
+    setOrderEditForm({
+      token_number: order?.token_number ?? '',
+      customer_name: order?.customer_name ?? '',
+      customer_mobile: order?.customer_mobile ?? '',
+      order_instruction: order?.order_instruction ?? '',
+      total_amount: order?.total_amount ?? '',
+    });
     setRefundAmountInput(order?.refund_amount ?? order?.total_amount ?? '');
     setRefundNoteInput('');
     try {
@@ -270,6 +288,49 @@ function AdminOrdersPage() {
     if (s.includes('awaiting')) return '#1b2430';
     if (s.includes('received') || s.includes('pending')) return '#1b2430';
     return '#ffffff';
+  };
+
+  const handleAdminSaveOrderEdits = async () => {
+    if (!selectedOrder) return;
+    setSavingOrderEdit(true);
+    try {
+      const payload = {
+        token_number: orderEditForm.token_number === '' ? null : Number(orderEditForm.token_number),
+        customer_name: String(orderEditForm.customer_name || '').trim(),
+        customer_mobile: String(orderEditForm.customer_mobile || '').trim(),
+        order_instruction: String(orderEditForm.order_instruction || '').trim(),
+        total_amount: orderEditForm.total_amount === '' ? undefined : Number(orderEditForm.total_amount),
+      };
+
+      const res = await apiRequest(`/orders/${selectedOrder.id}/admin`, 'PUT', payload);
+      showAlert('Order updated.', 'success');
+      setIsEditingOrder(false);
+      fetchOrders();
+      if (res?.order) {
+        setSelectedOrder((prev) => ({ ...prev, ...res.order }));
+      }
+    } catch (error) {
+      showAlert(`Could not update order: ${error.message}`, 'error');
+    } finally {
+      setSavingOrderEdit(false);
+    }
+  };
+
+  const handleAdminDeleteOrder = async () => {
+    if (!selectedOrder) return;
+    const displayNo = selectedOrder.token_number || selectedOrder.id;
+    const ok = window.confirm(`Delete order #${displayNo}? This cannot be undone.`);
+    if (!ok) return;
+
+    try {
+      await apiRequest(`/orders/${selectedOrder.id}`, 'DELETE');
+      showAlert('Order deleted.', 'success');
+      setSelectedOrder(null);
+      setRefundAuditLogs([]);
+      fetchOrders();
+    } catch (error) {
+      showAlert(`Could not delete order: ${error.message}`, 'error');
+    }
   };
 
   const getStatusMutedBackground = (status) => {
@@ -538,11 +599,11 @@ function AdminOrdersPage() {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="modal-overlay" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); }}>
+        <div className="modal-overlay" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); setIsEditingOrder(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="header-left">
-                <h3>Order Details #{selectedOrder.id}</h3>
+                <h3>Order Details #{selectedOrder.token_number || selectedOrder.id}</h3>
                 <div 
                   className="modal-status-badge"
                   style={{ backgroundColor: getStatusColor(selectedOrder.status), color: getStatusTextColor(selectedOrder.status) }}
@@ -568,11 +629,110 @@ function AdminOrdersPage() {
                 >
                   🖨️ Print Receipt
                 </button>
+                <button
+                  className="print-btn"
+                  onClick={() => setIsEditingOrder((v) => !v)}
+                  style={{
+                    backgroundColor: '#0A2342',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    marginLeft: '10px',
+                    border: 'none',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  ✏️ {isEditingOrder ? 'Close Edit' : 'Edit'}
+                </button>
+                <button
+                  className="print-btn"
+                  onClick={handleAdminDeleteOrder}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    marginLeft: '10px',
+                    border: 'none',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  🗑️ Delete
+                </button>
               </div>
-              <button className="close-btn" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); }}>×</button>
+              <button className="close-btn" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); setIsEditingOrder(false); }}>×</button>
             </div>
 
             <div className="modal-body">
+              {isEditingOrder && (
+                <div className="quick-action" style={{ background: '#f8fbff', borderColor: '#cfe2ff' }}>
+                  <span className="action-icon">✏️</span>
+                  <span className="action-text">Edit order fields (admin only). Use carefully.</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', width: '100%', marginTop: '10px' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      Token Number
+                      <input
+                        type="number"
+                        min="1"
+                        value={orderEditForm.token_number}
+                        onChange={(e) => setOrderEditForm((p) => ({ ...p, token_number: e.target.value }))}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      Customer Name
+                      <input
+                        type="text"
+                        value={orderEditForm.customer_name}
+                        onChange={(e) => setOrderEditForm((p) => ({ ...p, customer_name: e.target.value }))}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      Customer Mobile
+                      <input
+                        type="tel"
+                        value={orderEditForm.customer_mobile}
+                        onChange={(e) => setOrderEditForm((p) => ({ ...p, customer_mobile: e.target.value }))}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      Total Amount
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={orderEditForm.total_amount}
+                        onChange={(e) => setOrderEditForm((p) => ({ ...p, total_amount: e.target.value }))}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: '1 / -1' }}>
+                      Order Instruction
+                      <textarea
+                        rows="2"
+                        value={orderEditForm.order_instruction}
+                        onChange={(e) => setOrderEditForm((p) => ({ ...p, order_instruction: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="accept-order-btn"
+                      onClick={handleAdminSaveOrderEdits}
+                      disabled={savingOrderEdit}
+                    >
+                      {savingOrderEdit ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Quick Actions */}
               {selectedOrder.status === 'Received' && (
                 <div className="quick-action">
@@ -897,7 +1057,7 @@ function AdminOrdersPage() {
             </div>
 
             <div className="modal-footer">
-              <button className="close-modal-btn" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); }}>Close</button>
+              <button className="close-modal-btn" onClick={() => { setSelectedOrder(null); setRefundAuditLogs([]); setIsEditingOrder(false); }}>Close</button>
             </div>
           </div>
         </div>

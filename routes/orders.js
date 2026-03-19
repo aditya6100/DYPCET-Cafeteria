@@ -1805,5 +1805,157 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
     }));
 
+    // @desc    Admin edit order fields (token/customer/amount/instruction)
+    // @route   PUT /api/orders/:id/admin
+    // @access  Admin
+    router.put('/:id/admin', protect, admin, asyncHandler(async (req, res) => {
+        const orderId = Number(req.params.id);
+        if (!Number.isFinite(orderId) || orderId <= 0) {
+            res.status(400);
+            throw new Error('Invalid order ID.');
+        }
+
+        const orderCols = await getOrdersColumns();
+        const setParts = [];
+        const params = [];
+
+        if (req.body?.token_number !== undefined && orderCols.has('token_number')) {
+            const raw = req.body.token_number;
+            const nextToken = raw === null || raw === '' ? null : Number(raw);
+            if (nextToken !== null) {
+                if (!Number.isFinite(nextToken) || nextToken <= 0 || nextToken > 99999) {
+                    res.status(400);
+                    throw new Error('token_number must be a positive number.');
+                }
+            }
+            setParts.push('token_number = ?');
+            params.push(nextToken === null ? null : Math.floor(nextToken));
+        }
+
+        if (req.body?.customer_name !== undefined) {
+            const name = String(req.body.customer_name || '').trim().slice(0, 100) || null;
+            setParts.push('customer_name = ?');
+            params.push(name);
+        }
+
+        if (req.body?.customer_mobile !== undefined) {
+            const digits = String(req.body.customer_mobile || '').replace(/\D/g, '').slice(-10);
+            const mobile = digits ? digits : null;
+            if (mobile && !/^\d{10}$/.test(mobile)) {
+                res.status(400);
+                throw new Error('customer_mobile must be 10 digits.');
+            }
+            setParts.push('customer_mobile = ?');
+            params.push(mobile);
+        }
+
+        if (req.body?.order_instruction !== undefined && orderCols.has('order_instruction')) {
+            const instruction = String(req.body.order_instruction || '').trim().slice(0, 500) || null;
+            setParts.push('order_instruction = ?');
+            params.push(instruction);
+        }
+
+        if (req.body?.total_amount !== undefined) {
+            const total = Number(req.body.total_amount);
+            if (!Number.isFinite(total) || total <= 0) {
+                res.status(400);
+                throw new Error('total_amount must be a positive number.');
+            }
+            setParts.push('total = ?');
+            params.push(Number(total.toFixed(2)));
+        }
+
+        if (req.body?.status !== undefined) {
+            const status = String(req.body.status || '').trim().slice(0, 40);
+            if (!status) {
+                res.status(400);
+                throw new Error('status cannot be empty.');
+            }
+            setParts.push('status = ?');
+            params.push(status);
+        }
+
+        if (req.body?.payment_status !== undefined && orderCols.has('payment_status')) {
+            const paymentStatus = String(req.body.payment_status || '').trim().slice(0, 30) || null;
+            setParts.push('payment_status = ?');
+            params.push(paymentStatus);
+        }
+
+        if (req.body?.payment_method !== undefined && orderCols.has('payment_method')) {
+            const method = String(req.body.payment_method || '').trim().slice(0, 30) || null;
+            setParts.push('payment_method = ?');
+            params.push(method);
+        }
+
+        if (req.body?.order_source !== undefined && orderCols.has('order_source')) {
+            const source = String(req.body.order_source || '').trim().slice(0, 30) || null;
+            setParts.push('order_source = ?');
+            params.push(source);
+        }
+
+        if (setParts.length === 0) {
+            res.status(400);
+            throw new Error('No editable fields provided.');
+        }
+
+        const result = await db.query(
+            `UPDATE orders
+             SET ${setParts.join(', ')}
+             WHERE id = ?`,
+            [...params, orderId]
+        );
+
+        const affected = Number(result?.affectedRows || result?.[0]?.affectedRows || 0);
+        if (affected <= 0) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+
+        const refreshed = await db.query(
+            `SELECT id, items, total AS total_amount, status, timestamp, transaction_id, user_id,
+                    payment_status, payment_method, order_source, token_number, customer_name, customer_mobile,
+                    refund_status, refund_amount, refund_reason,
+                    refund_admin_note, refund_requested_at, refund_processed_at,
+                    refund_processed_by, refund_last_action, order_instruction
+             FROM orders WHERE id = ? LIMIT 1`,
+            [orderId]
+        );
+
+        res.json({ message: 'Order updated successfully.', order: refreshed?.[0] || null });
+    }));
+
+    // @desc    Delete an order (hard delete)
+    // @route   DELETE /api/orders/:id
+    // @access  Admin
+    router.delete('/:id', protect, admin, asyncHandler(async (req, res) => {
+        const orderId = Number(req.params.id);
+        if (!Number.isFinite(orderId) || orderId <= 0) {
+            res.status(400);
+            throw new Error('Invalid order ID.');
+        }
+
+        // Best-effort cleanup of related tables (may not exist in all DB snapshots)
+        try {
+            await ensureGuestOrderTokensTable();
+            await db.query(`DELETE FROM guest_order_tokens WHERE order_id = ?`, [orderId]);
+        } catch (_error) {
+            // ignore
+        }
+        try {
+            await db.query(`DELETE FROM refund_audit_logs WHERE order_id = ?`, [orderId]);
+        } catch (_error) {
+            // ignore
+        }
+
+        const result = await db.query(`DELETE FROM orders WHERE id = ?`, [orderId]);
+        const affected = Number(result?.affectedRows || result?.[0]?.affectedRows || 0);
+        if (affected <= 0) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+
+        res.json({ message: 'Order deleted successfully.' });
+    }));
+
     return router;
 };
