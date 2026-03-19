@@ -101,6 +101,52 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
     };
 
+    const getDisplayBoardSettings = async () => {
+        const rows = await db.query(
+            `SELECT setting_value
+             FROM menu_settings
+             WHERE setting_key = 'display_board'
+             LIMIT 1`
+        );
+
+        const raw = rows?.[0]?.setting_value;
+        if (!raw) {
+            return {
+                sound_enabled: true,
+                ready_repeat_count: 3,
+                ready_interval_ms: 1200,
+                tts_enabled: false,
+                announcement_text: '',
+                announcement_id: 0
+            };
+        }
+
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return {
+                sound_enabled: parsed?.sound_enabled === undefined ? true : Boolean(parsed.sound_enabled),
+                ready_repeat_count: Number.isFinite(Number(parsed?.ready_repeat_count))
+                    ? Math.min(Math.max(Number(parsed.ready_repeat_count), 1), 10)
+                    : 3,
+                ready_interval_ms: Number.isFinite(Number(parsed?.ready_interval_ms))
+                    ? Math.min(Math.max(Number(parsed.ready_interval_ms), 300), 4000)
+                    : 1200,
+                tts_enabled: Boolean(parsed?.tts_enabled),
+                announcement_text: String(parsed?.announcement_text || '').slice(0, 240),
+                announcement_id: Number.isFinite(Number(parsed?.announcement_id)) ? Number(parsed.announcement_id) : 0
+            };
+        } catch (_error) {
+            return {
+                sound_enabled: true,
+                ready_repeat_count: 3,
+                ready_interval_ms: 1200,
+                tts_enabled: false,
+                announcement_text: '',
+                announcement_id: 0
+            };
+        }
+    };
+
     const ensureMenuColumns = async () => {
         await db.query(
             `CREATE TABLE IF NOT EXISTS menu_categories (
@@ -200,6 +246,14 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
              VALUES (
                 'order_pause',
                 '{"enabled":false,"start_time":"13:00","end_time":"14:00","message":"Ordering is temporarily paused. Please try again later."}'
+             )`
+        );
+
+        await db.query(
+            `INSERT IGNORE INTO menu_settings (setting_key, setting_value)
+             VALUES (
+                'display_board',
+                '{"sound_enabled":true,"ready_repeat_count":3,"ready_interval_ms":1200,"tts_enabled":false,"announcement_text":"","announcement_id":0}'
              )`
         );
 
@@ -546,6 +600,50 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             message: 'Order pause settings updated successfully.',
             settings: { enabled, start_time, end_time, message, show_on_display_board, is_paused_now: isPausedNow, timezone: APP_TIMEZONE }
         });
+    }));
+
+    // @desc    Fetch display board settings (public)
+    // @route   GET /api/menu/display-board
+    // @access  Public
+    router.get('/display-board', asyncHandler(async (_req, res) => {
+        const settings = await getDisplayBoardSettings();
+        res.json(settings);
+    }));
+
+    // @desc    Update display board settings (admin/staff)
+    // @route   PUT /api/menu/display-board
+    // @access  Admin
+    router.put('/display-board', protect, admin, asyncHandler(async (req, res) => {
+        const current = await getDisplayBoardSettings();
+
+        const next = {
+            ...current,
+            sound_enabled: req.body?.sound_enabled === undefined ? current.sound_enabled : Boolean(req.body.sound_enabled),
+            ready_repeat_count: req.body?.ready_repeat_count === undefined
+                ? current.ready_repeat_count
+                : Math.min(Math.max(Number(req.body.ready_repeat_count) || 1, 1), 10),
+            ready_interval_ms: req.body?.ready_interval_ms === undefined
+                ? current.ready_interval_ms
+                : Math.min(Math.max(Number(req.body.ready_interval_ms) || 1200, 300), 4000),
+            tts_enabled: req.body?.tts_enabled === undefined ? current.tts_enabled : Boolean(req.body.tts_enabled),
+            announcement_text: req.body?.announcement_text === undefined
+                ? current.announcement_text
+                : String(req.body.announcement_text || '').trim().slice(0, 240),
+            announcement_id: req.body?.announcement_id === undefined
+                ? current.announcement_id
+                : Number(req.body.announcement_id) || current.announcement_id
+        };
+
+        await db.query(
+            `INSERT INTO menu_settings (setting_key, setting_value)
+             VALUES ('display_board', ?)
+             ON DUPLICATE KEY UPDATE
+                setting_value = VALUES(setting_value),
+                updated_at = CURRENT_TIMESTAMP`,
+            [JSON.stringify(next)]
+        );
+
+        res.json({ message: 'Display board settings updated.', settings: next });
     }));
 
     // @desc    Fetch menu categories

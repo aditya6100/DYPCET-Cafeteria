@@ -377,6 +377,11 @@ function AnalyticsPage() {
                     <small>Net {formatMoney(dayReport?.totals?.netRevenue)}</small>
                   </article>
                   <article className="analytics-card">
+                    <h4>Total Cost</h4>
+                    <p>{formatMoney(dayReport?.totals?.totalCost)}</p>
+                    <small>Profit {formatMoney(dayReport?.totals?.grossProfit)} ({Number(dayReport?.totals?.profitMarginPct || 0).toFixed(2)}%)</small>
+                  </article>
+                  <article className="analytics-card">
                     <h4>Tax (CGST+SGST)</h4>
                     <p>{formatMoney(dayReport?.totals?.taxCollected)}</p>
                     <small>CGST {formatMoney(dayReport?.totals?.cgstCollected)} · SGST {formatMoney(dayReport?.totals?.sgstCollected)}</small>
@@ -385,6 +390,63 @@ function AnalyticsPage() {
                     <h4>Refunded</h4>
                     <p>{formatMoney(dayReport?.totals?.refundedAmount)}</p>
                   </article>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      const token = localStorage.getItem('token') || '';
+                      fetch(`/api/analytics/admin/day/export?date=${encodeURIComponent(selectedDate)}&format=csv`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {}
+                      })
+                        .then((r) => {
+                          if (!r.ok) throw new Error('Download failed.');
+                          return r.blob();
+                        })
+                        .then((blob) => {
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `DYPCET_Day_Report_${selectedDate}.csv`;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          URL.revokeObjectURL(url);
+                        })
+                        .catch((e) => showAlert(String(e.message || e), 'error'));
+                    }}
+                  >
+                    Download CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      const token = localStorage.getItem('token') || '';
+                      fetch(`/api/analytics/admin/day/export?date=${encodeURIComponent(selectedDate)}&format=pdf`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {}
+                      })
+                        .then((r) => {
+                          if (!r.ok) throw new Error('Download failed.');
+                          return r.blob();
+                        })
+                        .then((blob) => {
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `DYPCET_Day_Report_${selectedDate}.pdf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          URL.revokeObjectURL(url);
+                        })
+                        .catch((e) => showAlert(String(e.message || e), 'error'));
+                    }}
+                  >
+                    Download PDF
+                  </button>
                 </div>
 
                 {(dayReport?.items || []).length === 0 ? (
@@ -398,6 +460,8 @@ function AnalyticsPage() {
                           <th>Qty</th>
                           <th>Avg Price</th>
                           <th>Total</th>
+                          <th>Cost</th>
+                          <th>Profit</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -407,6 +471,8 @@ function AnalyticsPage() {
                             <td>{Number(item.quantity || 0)}</td>
                             <td>{formatMoney(item.avgPrice)}</td>
                             <td>{formatMoney(item.revenue)}</td>
+                            <td>{formatMoney(item.cost)}</td>
+                            <td>{formatMoney(item.margin)}</td>
                           </tr>
                         ))}
                       </tbody>

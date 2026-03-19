@@ -181,6 +181,62 @@
   text-align: center;
 }
 
+.display-admin-controls {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #dde5ef;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.display-admin-controls h4 {
+  margin: 0 0 10px;
+  color: #16324f;
+}
+
+.display-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.display-controls-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #29435e;
+}
+
+.display-control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #29435e;
+}
+
+.display-control-field input {
+  padding: 8px 10px;
+  border: 1px solid #dde5ef;
+  border-radius: 8px;
+}
+
+.display-announcement {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.display-announcement textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #dde5ef;
+  border-radius: 8px;
+  resize: vertical;
+}
+
 .fullscreen-btn {
   background: #0A2342;
   color: white;

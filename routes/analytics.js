@@ -137,6 +137,187 @@ module.exports = (config, db, auth) => {
 
     const isValidIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
 
+    const escapeCsv = (value) => {
+        const raw = String(value ?? '');
+        if (/[",\n]/.test(raw)) {
+            return `"${raw.replace(/"/g, '""')}"`;
+        }
+        return raw;
+    };
+
+    const createSimplePdfBuffer = (title, lines = []) => {
+        const width = 595; // A4 portrait
+        const height = 842;
+        const stream = [];
+
+        const escapePdfText = (value = '') =>
+            String(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+
+        const addText = (text, x, y, size = 10, font = 'F1') => {
+            stream.push('BT');
+            stream.push(`/${font} ${size} Tf`);
+            stream.push(`1 0 0 1 ${x} ${y} Tm`);
+            stream.push(`(${escapePdfText(text)}) Tj`);
+            stream.push('ET');
+        };
+
+        stream.push('0.65 w');
+        addText(String(title || 'Report').slice(0, 60), 60, 800, 16, 'F2');
+
+        let y = 780;
+        for (const line of lines) {
+            if (y < 60) break;
+            addText(String(line || '').slice(0, 110), 60, y, 10, 'F1');
+            y -= 14;
+        }
+
+        const streamData = `${stream.join('\n')}\n`;
+        const objects = [
+            null,
+            '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+            '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+            `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n`,
+            `4 0 obj\n<< /Length ${Buffer.byteLength(streamData, 'utf8')} >>\nstream\n${streamData}endstream\nendobj\n`,
+            '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+            '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+        ];
+
+        const parts = ['%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'];
+        const offsets = [0];
+        for (let i = 1; i < objects.length; i += 1) {
+            offsets[i] = Buffer.byteLength(parts.join(''), 'utf8');
+            parts.push(objects[i]);
+        }
+        const xrefOffset = Buffer.byteLength(parts.join(''), 'utf8');
+        parts.push(`xref\n0 ${objects.length}\n`);
+        parts.push('0000000000 65535 f \n');
+        for (let i = 1; i < objects.length; i += 1) {
+            parts.push(`${String(offsets[i]).padStart(10, '0')} 00000 n \n`);
+        }
+        parts.push(`trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+        return Buffer.from(parts.join(''), 'utf8');
+    };
+
+    const buildAdminDayReport = async (date) => {
+        const orderCols = await getOrdersColumns();
+        const selectCols = ['id', 'total', 'status', 'timestamp', 'items', 'refund_status', 'refund_amount'];
+        if (orderCols.has('payment_status')) selectCols.push('payment_status');
+        if (orderCols.has('payment_method')) selectCols.push('payment_method');
+        if (orderCols.has('order_source')) selectCols.push('order_source');
+
+        const rows = await db.query(
+            `SELECT ${selectCols.join(', ')}
+             FROM orders
+             WHERE DATE(timestamp) = ?`,
+            [date]
+        );
+
+        const menuRows = await db.query(`SELECT id, name, cost_price FROM menu_items`);
+        const menuById = new Map((menuRows || []).map((r) => [
+            Number(r.id),
+            {
+                name: String(r.name || 'Item').trim() || 'Item',
+                cost_price: toNumber(r.cost_price)
+            }
+        ]));
+
+        const paidOrders = (rows || []).filter((row) => isPaidOrder(row, orderCols));
+        const modes = {
+            online: { orders: 0, revenue: 0 },
+            offline: { orders: 0, revenue: 0 },
+            unknown: { orders: 0, revenue: 0 }
+        };
+
+        let grossRevenue = 0;
+        let refundedAmount = 0;
+        let taxCollected = 0;
+        let totalCost = 0;
+
+        const itemAgg = new Map(); // key -> { id, name, quantity, revenue, cost }
+        for (const row of paidOrders) {
+            const mode = classifyOrderMode(row, orderCols);
+            const orderTotal = toNumber(row.total);
+            modes[mode].orders += 1;
+            modes[mode].revenue = roundMoney(modes[mode].revenue + orderTotal);
+
+            grossRevenue = roundMoney(grossRevenue + orderTotal);
+            if (String(row.refund_status || '').toLowerCase() === 'processed') {
+                refundedAmount = roundMoney(refundedAmount + toNumber(row.refund_amount));
+            }
+
+            const items = getOrderItemsArray(row);
+            const subTotal = computeOrderSubtotal(items);
+            const tax = Math.max(0, roundMoney(orderTotal - subTotal));
+            taxCollected = roundMoney(taxCollected + tax);
+
+            for (const item of items) {
+                const itemId = Number(item?.id);
+                const quantity = toNumber(item?.quantity);
+                const price = toNumber(item?.price);
+                const revenue = roundMoney(quantity * price);
+
+                let resolvedName = String(item?.name || 'Item').trim() || 'Item';
+                let unitCost = 0;
+                if (Number.isFinite(itemId) && menuById.has(itemId)) {
+                    const meta = menuById.get(itemId);
+                    resolvedName = meta.name || resolvedName;
+                    unitCost = toNumber(meta.cost_price);
+                }
+                const cost = roundMoney(quantity * unitCost);
+                totalCost = roundMoney(totalCost + cost);
+
+                const key = Number.isFinite(itemId) ? `id:${itemId}` : `name:${resolvedName.toLowerCase()}`;
+                if (!itemAgg.has(key)) {
+                    itemAgg.set(key, {
+                        id: Number.isFinite(itemId) ? itemId : null,
+                        name: resolvedName,
+                        quantity: 0,
+                        revenue: 0,
+                        cost: 0
+                    });
+                }
+                const entry = itemAgg.get(key);
+                entry.quantity = toNumber(entry.quantity) + quantity;
+                entry.revenue = roundMoney(toNumber(entry.revenue) + revenue);
+                entry.cost = roundMoney(toNumber(entry.cost) + cost);
+            }
+        }
+
+        const items = [...itemAgg.values()]
+            .map((item) => {
+                const margin = roundMoney(toNumber(item.revenue) - toNumber(item.cost));
+                return {
+                    ...item,
+                    avgPrice: item.quantity > 0 ? roundMoney(item.revenue / item.quantity) : 0,
+                    margin,
+                    marginPct: item.revenue > 0 ? roundMoney((margin / item.revenue) * 100) : 0
+                };
+            })
+            .sort((a, b) => b.revenue - a.revenue);
+
+        const netRevenue = roundMoney(grossRevenue - refundedAmount);
+        const grossProfit = roundMoney(netRevenue - totalCost);
+        const profitMarginPct = netRevenue > 0 ? roundMoney((grossProfit / netRevenue) * 100) : 0;
+
+        return {
+            date,
+            totals: {
+                totalOrders: paidOrders.length,
+                grossRevenue,
+                refundedAmount,
+                netRevenue,
+                taxCollected,
+                cgstCollected: roundMoney(taxCollected / 2),
+                sgstCollected: roundMoney(taxCollected / 2),
+                totalCost,
+                grossProfit,
+                profitMarginPct
+            },
+            modes,
+            items
+        };
+    };
+
     // @desc    Admin analytics dashboard data
     // @route   GET /api/analytics/admin
     // @access  Admin/Staff
@@ -404,97 +585,74 @@ module.exports = (config, db, auth) => {
             throw new Error('Valid date (YYYY-MM-DD) is required.');
         }
 
-        const orderCols = await getOrdersColumns();
-        const selectCols = ['id', 'total', 'status', 'timestamp', 'items', 'refund_status', 'refund_amount'];
-        if (orderCols.has('payment_status')) selectCols.push('payment_status');
-        if (orderCols.has('payment_method')) selectCols.push('payment_method');
-        if (orderCols.has('order_source')) selectCols.push('order_source');
+        const report = await buildAdminDayReport(date);
+        res.json(report);
+    }));
 
-        const rows = await db.query(
-            `SELECT ${selectCols.join(', ')}
-             FROM orders
-             WHERE DATE(timestamp) = ?`,
-            [date]
-        );
+    // @desc    Download admin day-wise report (CSV/PDF)
+    // @route   GET /api/analytics/admin/day/export?date=YYYY-MM-DD&format=csv|pdf
+    // @access  Admin/Staff
+    router.get('/admin/day/export', protect, admin, asyncHandler(async (req, res) => {
+        const date = String(req.query?.date || '').trim();
+        const format = String(req.query?.format || 'csv').trim().toLowerCase();
 
-        const menuRows = await db.query(`SELECT id, name FROM menu_items`);
-        const menuById = new Map((menuRows || []).map((r) => [Number(r.id), String(r.name || 'Item').trim() || 'Item']));
-
-        const paidOrders = (rows || []).filter((row) => isPaidOrder(row, orderCols));
-        const modes = {
-            online: { orders: 0, revenue: 0 },
-            offline: { orders: 0, revenue: 0 },
-            unknown: { orders: 0, revenue: 0 }
-        };
-
-        let grossRevenue = 0;
-        let refundedAmount = 0;
-        let taxCollected = 0;
-
-        const itemAgg = new Map(); // key -> { id, name, quantity, revenue }
-        for (const row of paidOrders) {
-            const mode = classifyOrderMode(row, orderCols);
-            const orderTotal = toNumber(row.total);
-            modes[mode].orders += 1;
-            modes[mode].revenue = roundMoney(modes[mode].revenue + orderTotal);
-
-            grossRevenue = roundMoney(grossRevenue + orderTotal);
-            if (String(row.refund_status || '').toLowerCase() === 'processed') {
-                refundedAmount = roundMoney(refundedAmount + toNumber(row.refund_amount));
-            }
-
-            const items = getOrderItemsArray(row);
-            const subTotal = computeOrderSubtotal(items);
-            const tax = Math.max(0, roundMoney(orderTotal - subTotal));
-            taxCollected = roundMoney(taxCollected + tax);
-
-            for (const item of items) {
-                const itemId = Number(item?.id);
-                const resolvedName = (Number.isFinite(itemId) && menuById.has(itemId))
-                    ? menuById.get(itemId)
-                    : String(item?.name || 'Item').trim() || 'Item';
-                const key = Number.isFinite(itemId) ? `id:${itemId}` : `name:${resolvedName.toLowerCase()}`;
-                const quantity = toNumber(item?.quantity);
-                const price = toNumber(item?.price);
-                const revenue = roundMoney(quantity * price);
-
-                if (!itemAgg.has(key)) {
-                    itemAgg.set(key, {
-                        id: Number.isFinite(itemId) ? itemId : null,
-                        name: resolvedName,
-                        quantity: 0,
-                        revenue: 0
-                    });
-                }
-                const entry = itemAgg.get(key);
-                entry.quantity = toNumber(entry.quantity) + quantity;
-                entry.revenue = roundMoney(toNumber(entry.revenue) + revenue);
-            }
+        if (!isValidIsoDate(date)) {
+            res.status(400);
+            throw new Error('Valid date (YYYY-MM-DD) is required.');
+        }
+        if (!['csv', 'pdf'].includes(format)) {
+            res.status(400);
+            throw new Error('format must be csv or pdf.');
         }
 
-        const items = [...itemAgg.values()]
-            .map((item) => ({
-                ...item,
-                avgPrice: item.quantity > 0 ? roundMoney(item.revenue / item.quantity) : 0
-            }))
-            .sort((a, b) => b.revenue - a.revenue);
+        const report = await buildAdminDayReport(date);
+        const filenameBase = `DYPCET_Day_Report_${date}`;
 
-        const netRevenue = roundMoney(grossRevenue - refundedAmount);
+        if (format === 'csv') {
+            const headers = ['Item', 'Qty', 'Avg Price', 'Revenue', 'Cost', 'Profit'];
+            const rows = (report.items || []).map((item) => ([
+                escapeCsv(item.name),
+                String(Number(item.quantity || 0)),
+                String(Number(item.avgPrice || 0).toFixed(2)),
+                String(Number(item.revenue || 0).toFixed(2)),
+                String(Number(item.cost || 0).toFixed(2)),
+                String(Number(item.margin || 0).toFixed(2)),
+            ].join(',')));
 
-        res.json({
-            date,
-            totals: {
-                totalOrders: paidOrders.length,
-                grossRevenue,
-                refundedAmount,
-                netRevenue,
-                taxCollected,
-                cgstCollected: roundMoney(taxCollected / 2),
-                sgstCollected: roundMoney(taxCollected / 2)
-            },
-            modes,
-            items
-        });
+            const summary = [
+                '',
+                '',
+                '',
+                `Gross:${Number(report.totals.grossRevenue || 0).toFixed(2)}`,
+                `Cost:${Number(report.totals.totalCost || 0).toFixed(2)}`,
+                `Profit:${Number(report.totals.grossProfit || 0).toFixed(2)}`,
+            ].join(',');
+
+            const csv = [headers.join(','), ...rows, summary].join('\n');
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.csv"`);
+            return res.send(csv);
+        }
+
+        const lines = [
+            `Date: ${report.date}`,
+            `Orders: ${report.totals.totalOrders} (Online ${report.modes.online.orders}, Offline ${report.modes.offline.orders})`,
+            `Gross: INR ${Number(report.totals.grossRevenue || 0).toFixed(2)}`,
+            `Cost: INR ${Number(report.totals.totalCost || 0).toFixed(2)}`,
+            `Profit: INR ${Number(report.totals.grossProfit || 0).toFixed(2)} (${Number(report.totals.profitMarginPct || 0).toFixed(2)}%)`,
+            `Tax (CGST+SGST): INR ${Number(report.totals.taxCollected || 0).toFixed(2)}`,
+            '',
+            'Items:',
+            ...((report.items || []).slice(0, 45).map((item) => (
+                `${String(item.name).slice(0, 40)} | Qty ${item.quantity} | Rev ${Number(item.revenue || 0).toFixed(2)} | Cost ${Number(item.cost || 0).toFixed(2)} | Profit ${Number(item.margin || 0).toFixed(2)}`
+            )))
+        ];
+
+        const pdf = createSimplePdfBuffer('DYPCET Cafeteria - Day Report', lines);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.pdf"`);
+        res.setHeader('Content-Length', pdf.length);
+        return res.send(pdf);
     }));
 
     // @desc    Faculty analytics dashboard data
