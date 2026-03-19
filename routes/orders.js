@@ -1819,6 +1819,53 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         const setParts = [];
         const params = [];
 
+        const existingRows = await db.query(
+            `SELECT id, status,
+                    ${orderCols.has('payment_status') ? 'payment_status' : 'NULL AS payment_status'},
+                    ${orderCols.has('payment_method') ? 'payment_method' : 'NULL AS payment_method'},
+                    ${orderCols.has('order_source') ? 'order_source' : 'NULL AS order_source'}
+             FROM orders
+             WHERE id = ?
+             LIMIT 1`,
+            [orderId]
+        );
+        const existing = existingRows?.[0] || null;
+        if (!existing) {
+            res.status(404);
+            throw new Error('Order not found.');
+        }
+
+        const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
+        const orderStatus = normalizeStatus(existing.status);
+        const paymentStatusNorm = normalizeStatus(existing.payment_status);
+        const orderSource = String(existing.order_source || '').trim().toUpperCase();
+        const paymentMethod = String(existing.payment_method || '').trim().toUpperCase();
+        const isOffline = orderSource === 'OFFLINE' || paymentMethod === 'CASH';
+        const isPaid = paymentStatusNorm === 'paid';
+
+        if (req.body?.items !== undefined) {
+            if (orderStatus === 'cancelled' || orderStatus === 'completed') {
+                res.status(400);
+                throw new Error('Cannot edit items for completed/cancelled orders.');
+            }
+            if (isPaid && !isOffline) {
+                res.status(400);
+                throw new Error('Cannot edit items for a paid online order.');
+            }
+
+            const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+            const totals = computeTotalsFromItems(rawItems);
+            if (totals.items.length === 0) {
+                res.status(400);
+                throw new Error('items must be a non-empty array.');
+            }
+
+            setParts.push('items = ?');
+            params.push(JSON.stringify(totals.items));
+            setParts.push('total = ?');
+            params.push(Number(totals.grandTotal.toFixed(2)));
+        }
+
         if (req.body?.token_number !== undefined && orderCols.has('token_number')) {
             const raw = req.body.token_number;
             const nextToken = raw === null || raw === '' ? null : Number(raw);
@@ -1855,7 +1902,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             params.push(instruction);
         }
 
-        if (req.body?.total_amount !== undefined) {
+        if (req.body?.total_amount !== undefined && req.body?.items === undefined) {
             const total = Number(req.body.total_amount);
             if (!Number.isFinite(total) || total <= 0) {
                 res.status(400);

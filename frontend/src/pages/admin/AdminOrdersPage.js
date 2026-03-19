@@ -1,12 +1,15 @@
 // frontend/src/pages/admin/AdminOrdersPage.js
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import apiRequest from '../../utils/api';
 import { useAlert } from '../../hooks/useAlert';
 import './AdminDashboard.css';
 import './AdminOrdersPage.css';
 
 function AdminOrdersPage() {
+  const CGST_RATE = 0.025;
+  const SGST_RATE = 0.025;
+
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +31,12 @@ function AdminOrdersPage() {
     order_instruction: '',
     total_amount: '',
   });
+  const [orderEditItems, setOrderEditItems] = useState([]);
+  const [orderEditItemsDirty, setOrderEditItemsDirty] = useState(false);
+  const [menuItemsForEdit, setMenuItemsForEdit] = useState([]);
+  const [menuItemsLoaded, setMenuItemsLoaded] = useState(false);
+  const [addMenuItemId, setAddMenuItemId] = useState('');
+  const [addMenuItemQty, setAddMenuItemQty] = useState('1');
   const [stats, setStats] = useState({
     totalOrders: 0,
     pendingOrders: 0,
@@ -35,6 +44,65 @@ function AdminOrdersPage() {
     totalRevenue: 0
   });
   const { showAlert } = useAlert();
+
+  const safeParseItems = useCallback((items) => {
+    if (Array.isArray(items)) return items;
+    if (typeof items === 'string') {
+      try {
+        const parsed = JSON.parse(items);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_error) {
+        return [];
+      }
+    }
+    return [];
+  }, []);
+
+  const normalizeItemsForEdit = useCallback((items) => {
+    const raw = safeParseItems(items);
+    return raw.map((item) => ({
+      id: item?.id ?? item?.menu_item_id ?? item?.item_id ?? null,
+      name: String(item?.name ?? item?.item_name ?? '').trim(),
+      price: String(item?.price ?? item?.unit_price ?? 0),
+      quantity: String(item?.quantity ?? item?.qty ?? 1),
+    }));
+  }, [safeParseItems]);
+
+  const previewTotals = useMemo(() => {
+    const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    const normalized = (Array.isArray(orderEditItems) ? orderEditItems : []).map((it) => ({
+      price: Number(it?.price ?? 0),
+      quantity: Number(it?.quantity ?? 0),
+    })).filter((it) => Number.isFinite(it.price) && it.price >= 0 && Number.isFinite(it.quantity) && it.quantity > 0);
+
+    const subTotal = roundMoney(normalized.reduce((sum, it) => sum + (it.price * it.quantity), 0));
+    const cgstAmount = roundMoney(subTotal * CGST_RATE);
+    const sgstAmount = roundMoney(subTotal * SGST_RATE);
+    const grandTotal = roundMoney(subTotal + cgstAmount + sgstAmount);
+    return { subTotal, cgstAmount, sgstAmount, grandTotal };
+  }, [orderEditItems]);
+
+  useEffect(() => {
+    if (!isEditingOrder) return;
+    if (menuItemsLoaded) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiRequest('/menu');
+        if (cancelled) return;
+        setMenuItemsForEdit(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (!cancelled) {
+          showAlert(`Could not load menu for item edit: ${error.message}`, 'error');
+        }
+      } finally {
+        if (!cancelled) setMenuItemsLoaded(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isEditingOrder, menuItemsLoaded, showAlert]);
 
   const applyFilters = useCallback((ordersToFilter, search, status, fromDate, toDate) => {
     let filtered = ordersToFilter;
@@ -183,6 +251,10 @@ function AdminOrdersPage() {
       order_instruction: order?.order_instruction ?? '',
       total_amount: order?.total_amount ?? '',
     });
+    setOrderEditItems(normalizeItemsForEdit(order?.items));
+    setOrderEditItemsDirty(false);
+    setAddMenuItemId('');
+    setAddMenuItemQty('1');
     setRefundAmountInput(order?.refund_amount ?? order?.total_amount ?? '');
     setRefundNoteInput('');
     try {
@@ -299,15 +371,38 @@ function AdminOrdersPage() {
         customer_name: String(orderEditForm.customer_name || '').trim(),
         customer_mobile: String(orderEditForm.customer_mobile || '').trim(),
         order_instruction: String(orderEditForm.order_instruction || '').trim(),
-        total_amount: orderEditForm.total_amount === '' ? undefined : Number(orderEditForm.total_amount),
       };
+
+      if (orderEditItemsDirty) {
+        const normalized = (Array.isArray(orderEditItems) ? orderEditItems : []).map((it) => ({
+          id: it?.id ? Number(it.id) : undefined,
+          name: String(it?.name || '').trim(),
+          price: Number(it?.price ?? 0),
+          quantity: Number(it?.quantity ?? 0),
+        })).filter((it) => it.name && Number.isFinite(it.price) && it.price >= 0 && Number.isFinite(it.quantity) && it.quantity > 0);
+
+        if (normalized.length === 0) {
+          showAlert('Add at least 1 valid item (name, price, qty).', 'error');
+          return;
+        }
+
+        payload.items = normalized;
+      } else {
+        payload.total_amount = orderEditForm.total_amount === '' ? undefined : Number(orderEditForm.total_amount);
+      }
 
       const res = await apiRequest(`/orders/${selectedOrder.id}/admin`, 'PUT', payload);
       showAlert('Order updated.', 'success');
       setIsEditingOrder(false);
       fetchOrders();
       if (res?.order) {
-        setSelectedOrder((prev) => ({ ...prev, ...res.order }));
+        const next = { ...selectedOrder, ...res.order };
+        if (typeof next.items === 'string') {
+          try { next.items = JSON.parse(next.items); } catch (_error) { /* ignore */ }
+        }
+        setSelectedOrder(next);
+        setOrderEditItems(normalizeItemsForEdit(next.items));
+        setOrderEditItemsDirty(false);
       }
     } catch (error) {
       showAlert(`Could not update order: ${error.message}`, 'error');
@@ -710,7 +805,11 @@ function AdminOrdersPage() {
                         min="0"
                         value={orderEditForm.total_amount}
                         onChange={(e) => setOrderEditForm((p) => ({ ...p, total_amount: e.target.value }))}
+                        disabled={orderEditItemsDirty}
                       />
+                      {orderEditItemsDirty && (
+                        <small className="order-edit-help">Total is auto-calculated from items (incl. CGST/SGST).</small>
+                      )}
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: '1 / -1' }}>
                       Order Instruction
@@ -720,6 +819,150 @@ function AdminOrdersPage() {
                         onChange={(e) => setOrderEditForm((p) => ({ ...p, order_instruction: e.target.value }))}
                       />
                     </label>
+                  </div>
+
+                  <div className="order-items-editor">
+                    <div className="order-items-editor__header">
+                      <div className="order-items-editor__title">Order Items</div>
+                      <div className="order-items-editor__subtitle">Editing items recalculates total with 2.5% CGST + 2.5% SGST.</div>
+                    </div>
+
+                    <div className="order-items-editor__grid order-items-editor__grid--head">
+                      <div>Item</div>
+                      <div>Price</div>
+                      <div>Qty</div>
+                      <div>Line</div>
+                      <div></div>
+                    </div>
+
+                    {orderEditItems.map((item, idx) => {
+                      const line = (Number(item?.price ?? 0) * Number(item?.quantity ?? 0)) || 0;
+                      return (
+                        <div className="order-items-editor__grid" key={`${item?.id ?? item?.name ?? 'item'}-${idx}`}>
+                          <input
+                            type="text"
+                            value={item?.name ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setOrderEditItems((prev) => prev.map((it, i) => (i === idx ? { ...it, name: value } : it)));
+                              setOrderEditItemsDirty(true);
+                            }}
+                            placeholder="Item name"
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item?.price ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setOrderEditItems((prev) => prev.map((it, i) => (i === idx ? { ...it, price: value } : it)));
+                              setOrderEditItemsDirty(true);
+                            }}
+                            placeholder="0"
+                          />
+                          <input
+                            type="number"
+                            step="1"
+                            min="1"
+                            value={item?.quantity ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setOrderEditItems((prev) => prev.map((it, i) => (i === idx ? { ...it, quantity: value } : it)));
+                              setOrderEditItemsDirty(true);
+                            }}
+                            placeholder="1"
+                          />
+                          <div className="order-items-editor__line">₹{Number.isFinite(line) ? line.toFixed(2) : '0.00'}</div>
+                          <button
+                            type="button"
+                            className="order-items-editor__remove"
+                            onClick={() => {
+                              setOrderEditItems((prev) => prev.filter((_it, i) => i !== idx));
+                              setOrderEditItemsDirty(true);
+                            }}
+                            title="Remove item"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    <div className="order-items-editor__add">
+                      <select
+                        value={addMenuItemId}
+                        onChange={(e) => setAddMenuItemId(e.target.value)}
+                      >
+                        <option value="">Add from menu…</option>
+                        {menuItemsForEdit.map((mi) => (
+                          <option key={mi.id} value={String(mi.id)}>
+                            {mi.name} (₹{Number(mi.price || 0).toFixed(2)})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={addMenuItemQty}
+                        onChange={(e) => setAddMenuItemQty(e.target.value)}
+                        placeholder="Qty"
+                      />
+                      <button
+                        type="button"
+                        className="order-items-editor__addbtn"
+                        onClick={() => {
+                          const idNum = Number(addMenuItemId);
+                          if (!Number.isFinite(idNum) || idNum <= 0) return;
+                          const qty = Math.max(1, Math.floor(Number(addMenuItemQty || 1) || 1));
+                          const found = menuItemsForEdit.find((m) => Number(m.id) === idNum);
+                          if (!found) return;
+
+                          setOrderEditItems((prev) => {
+                            const existingIdx = prev.findIndex((it) => Number(it?.id) === idNum);
+                            if (existingIdx >= 0) {
+                              return prev.map((it, i) => (i === existingIdx ? { ...it, quantity: String((Number(it.quantity || 0) || 0) + qty) } : it));
+                            }
+                            return [
+                              ...prev,
+                              {
+                                id: idNum,
+                                name: String(found.name || '').trim(),
+                                price: String(found.price ?? 0),
+                                quantity: String(qty),
+                              }
+                            ];
+                          });
+                          setOrderEditItemsDirty(true);
+                          setAddMenuItemId('');
+                          setAddMenuItemQty('1');
+                        }}
+                        disabled={!addMenuItemId}
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        className="order-items-editor__addbtn secondary"
+                        onClick={() => {
+                          setOrderEditItems((prev) => ([...prev, { id: null, name: '', price: '0', quantity: '1' }]));
+                          setOrderEditItemsDirty(true);
+                        }}
+                      >
+                        Add custom
+                      </button>
+                    </div>
+
+                    <div className="order-items-editor__totals">
+                      <div><span>Subtotal</span><span>₹{previewTotals.subTotal.toFixed(2)}</span></div>
+                      <div><span>CGST (2.5%)</span><span>₹{previewTotals.cgstAmount.toFixed(2)}</span></div>
+                      <div><span>SGST (2.5%)</span><span>₹{previewTotals.sgstAmount.toFixed(2)}</span></div>
+                      <div className="grand"><span>Grand Total</span><span>₹{previewTotals.grandTotal.toFixed(2)}</span></div>
+                      {orderEditItemsDirty && (
+                        <div className="hint">Click “Save Changes” to apply item edits.</div>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                     <button
