@@ -683,6 +683,32 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         }
     }));
 
+    // @desc    Toggle availability for an entire section/category
+    // @route   PUT /api/menu/sections/:category/availability
+    // @access  Admin
+    router.put('/sections/:category/availability', protect, admin, asyncHandler(async (req, res) => {
+        const category = normalizeCategory(req.params?.category || '');
+        if (!category) {
+            res.status(400);
+            throw new Error('Category is required.');
+        }
+
+        const isAvailable = Number(req.body?.is_available) ? 1 : 0;
+
+        const result = await db.query(
+            `UPDATE menu_items
+             SET is_available = ?
+             WHERE UPPER(TRIM(menu_type)) = ?
+                OR UPPER(TRIM(REPLACE(REPLACE(REPLACE(menu_type, ' ', '_'), '/', '_'), '-', '_'))) = ?`,
+            [isAvailable, category, category]
+        );
+
+        res.json({
+            message: `Section ${category} marked ${isAvailable ? 'available' : 'unavailable'}.`,
+            updated: Number(result?.affectedRows || result?.[0]?.affectedRows || 0)
+        });
+    }));
+
     // @desc    Update a menu item
     // @route   PUT /api/menu/:id
     // @access  Admin

@@ -40,6 +40,7 @@ function AdminMenuPage() {
   const [categoryTimings, setCategoryTimings] = useState({});
   const [savingCategoryTiming, setSavingCategoryTiming] = useState('');
   const [showTimings, setShowTimings] = useState(false);
+  const [savingSectionAvailability, setSavingSectionAvailability] = useState('');
   const { showAlert } = useAlert();
 
   const [formData, setFormData] = useState({
@@ -392,6 +393,42 @@ function AdminMenuPage() {
         item.id === itemId ? { ...item, is_available: currentStatus } : item
       ));
       showAlert(`Error updating availability: ${error.message}`, 'error');
+    }
+  };
+
+  const handleSectionAvailabilityToggle = async (category, items) => {
+    const key = String(category || '').toUpperCase().trim();
+    if (!key || key === 'ALL') return;
+    if (!Array.isArray(items) || items.length === 0) return;
+
+    const availableCount = items.filter((item) => Number(item?.is_available) === 1).length;
+    const allAvailable = availableCount === items.length;
+    const nextStatus = allAvailable ? 0 : 1;
+
+    setSavingSectionAvailability(key);
+
+    // Optimistic update for all items in this section.
+    setMenuItems((prev) => prev.map((item) => {
+      const itemCategory = String(item?.menu_type || 'REGULAR').toUpperCase().trim();
+      if (itemCategory !== key) return item;
+      return { ...item, is_available: nextStatus };
+    }));
+
+    try {
+      await apiRequest(`/menu/sections/${encodeURIComponent(key)}/availability`, 'PUT', {
+        is_available: nextStatus,
+      });
+      showAlert(
+        nextStatus === 1
+          ? `Section ${CATEGORY_DISPLAY_NAMES[key] || key.replace(/_/g, ' ')} marked available.`
+          : `Section ${CATEGORY_DISPLAY_NAMES[key] || key.replace(/_/g, ' ')} marked unavailable.`,
+        'success'
+      );
+    } catch (error) {
+      showAlert(`Could not update section availability: ${error.message}`, 'error');
+      fetchMenuItems();
+    } finally {
+      setSavingSectionAvailability('');
     }
   };
 
@@ -754,7 +791,29 @@ function AdminMenuPage() {
             {Object.entries(groupedMenuItems).map(([category, items]) => (
               <div key={category} id={`admin-category-${category}`} className="category-container">
                 <div className="category-header-admin">
-                  <h4>{CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' ')}</h4>
+                  <div className="category-header-title">
+                    {category !== 'ALL' && (
+                      <label className="section-availability-toggle" title="Toggle availability for this section">
+                        <input
+                          type="checkbox"
+                          checked={items.length > 0 && items.every((item) => Number(item?.is_available) === 1)}
+                          ref={(el) => {
+                            if (!el) return;
+                            const availableCount = items.filter((item) => Number(item?.is_available) === 1).length;
+                            const allAvailable = availableCount === items.length;
+                            const someAvailable = availableCount > 0;
+                            el.indeterminate = someAvailable && !allAvailable;
+                          }}
+                          disabled={savingSectionAvailability === String(category || '').toUpperCase().trim()}
+                          onChange={() => handleSectionAvailabilityToggle(category, items)}
+                        />
+                      </label>
+                    )}
+                    <h4>{CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' ')}</h4>
+                    {savingSectionAvailability === String(category || '').toUpperCase().trim() && (
+                      <small className="section-saving-hint">Saving...</small>
+                    )}
+                  </div>
                   <span className="item-badge">{items.length}</span>
                 </div>
                 <div
