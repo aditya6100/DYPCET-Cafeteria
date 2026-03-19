@@ -31,6 +31,14 @@ const pickPreferredVoice = (voices) => {
 
   const preferLang = (v) => String(v.lang || '').toLowerCase();
   const preferName = (v) => String(v.name || '').toLowerCase();
+  const femaleHints = ['female', 'woman', 'zira', 'susan', 'catherine', 'samantha', 'victoria', 'linda', 'karen', 'tessa', 'serena', 'amelie', 'ava', 'allison'];
+  const isFemaleNamed = (v) => femaleHints.some((hint) => preferName(v).includes(hint));
+
+  const enInFemale = list.find((v) => preferLang(v).startsWith('en-in') && isFemaleNamed(v));
+  if (enInFemale) return enInFemale;
+
+  const enFemale = list.find((v) => preferLang(v).startsWith('en') && isFemaleNamed(v));
+  if (enFemale) return enFemale;
 
   const enIn = list.find((v) => preferLang(v).startsWith('en-in'));
   if (enIn) return enIn;
@@ -39,30 +47,6 @@ const pickPreferredVoice = (voices) => {
   const google = list.find((v) => preferName(v).includes('google'));
   if (google) return google;
   return list[0];
-};
-
-const playBeep = async ({ durationMs = 180, frequency = 880, volume = 0.12 } = {}) => {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    oscillator.type = 'sine';
-    oscillator.frequency.value = frequency;
-    gain.gain.value = clampNumber(volume, 0, 1, 0.12);
-
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.start();
-
-    await new Promise((resolve) => setTimeout(resolve, clampNumber(durationMs, 50, 800, 180)));
-    oscillator.stop();
-    await ctx.close().catch(() => {});
-  } catch (_error) {
-    // ignore
-  }
 };
 
 const speakText = (text, voice = null) => {
@@ -191,14 +175,9 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     const settings = displaySettings || {};
     const repeatCount = Math.round(clampNumber(settings.ready_repeat_count, 1, 10, 3));
     const intervalMs = Math.round(clampNumber(settings.ready_interval_ms, 300, 4000, 1200));
-    const soundEnabled = settings.sound_enabled === undefined ? true : Boolean(settings.sound_enabled);
     const ttsEnabled = Boolean(settings.tts_enabled);
 
     for (let i = 0; i < repeatCount; i += 1) {
-      if (soundEnabled) {
-        // eslint-disable-next-line no-await-in-loop
-        await playBeep({ durationMs: 180, frequency: 880, volume: 0.12 });
-      }
       if (ttsEnabled && isTtsSupported && ttsUnlocked) {
         speakText(`Order number ${orderNo} is ready`, preferredVoice);
       }
@@ -291,7 +270,6 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     try {
       setTtsUnlocked(true);
       localStorage.setItem('tts_unlocked', '1');
-      await playBeep({ durationMs: 120, frequency: 660, volume: 0.12 });
       if (isTtsSupported) {
         speakText('Announcements enabled', preferredVoice);
       }
@@ -323,7 +301,6 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     setSavingSettings(true);
     try {
       const payload = {
-        sound_enabled: Boolean(displaySettings?.sound_enabled),
         ready_repeat_count: Math.round(clampNumber(displaySettings?.ready_repeat_count, 1, 10, 3)),
         ready_interval_ms: Math.round(clampNumber(displaySettings?.ready_interval_ms, 300, 4000, 1200)),
         tts_enabled: Boolean(displaySettings?.tts_enabled),
@@ -493,16 +470,8 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
 
         {!publicMode && !kiosk && (
           <div className="display-admin-controls no-print">
-            <h4>Display Sound &amp; Announcements</h4>
+            <h4>Display Announcements</h4>
             <div className="display-controls-grid">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={Boolean(displaySettings?.sound_enabled)}
-                  onChange={(e) => setDisplaySettings((prev) => ({ ...(prev || {}), sound_enabled: e.target.checked }))}
-                />
-                <span>Enable Sound</span>
-              </label>
               <label>
                 <input
                   type="checkbox"
