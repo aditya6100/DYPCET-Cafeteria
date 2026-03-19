@@ -1243,11 +1243,13 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   GET /api/orders/display
     // @access  Public (or protected if needed, but display board usually needs to be accessible)
     router.get('/display', asyncHandler(async (req, res) => {
+        const orderCols = await getOrdersColumns();
+        const tokenSelect = orderCols.has('token_number') ? ', token_number' : '';
         const preparing = await db.query(
-            "SELECT id, status, timestamp, user_id FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20"
+            `SELECT id${tokenSelect}, status, timestamp, user_id FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20`
         );
         const ready = await db.query(
-            "SELECT id, status, timestamp, user_id FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20"
+            `SELECT id${tokenSelect}, status, timestamp, user_id FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20`
         );
 
         // Map them to include customer names if possible

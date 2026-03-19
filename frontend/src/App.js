@@ -49,6 +49,8 @@ function App() {
               <Route path="/status/:orderId" element={<><Header /><main><OrderStatusPage /></main><Footer /></>} />
               <Route path="/profile" element={<><Header /><main><ProfilePage /></main><Footer /></>} />
               <Route path="/feedback" element={<><Header /><main><UserFeedbackPage /></main><Footer /></>} />
+              <Route path="/display" element={<AdminDisplayBoardPage publicMode />} />
+              <Route path="/display-window" element={<AdminDisplayBoardPage kiosk publicMode />} />
               <Route path="/admin/display-window" element={<AdminDisplayBoardPage kiosk />} />
 
               {/* Admin routes - nested under AdminLayout */}

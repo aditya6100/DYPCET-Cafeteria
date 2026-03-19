@@ -7,7 +7,7 @@ import './AdminDisplayBoardPage.css';
 
 const REFRESH_INTERVAL_MS = 10000;
 
-function AdminDisplayBoardPage({ kiosk = false }) {
+function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -18,6 +18,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (publicMode) return;
     if (!isLoggedIn) {
       showAlert('Please log in to access display board.', 'error');
       navigate('/login');
@@ -27,16 +28,23 @@ function AdminDisplayBoardPage({ kiosk = false }) {
       showAlert('Only admin/staff can access display board.', 'error');
       navigate('/');
     }
-  }, [isAdmin, isLoggedIn, navigate, showAlert]);
+  }, [isAdmin, isLoggedIn, navigate, publicMode, showAlert]);
 
   const fetchOrders = useCallback(async ({ initial = false } = {}) => {
     try {
       if (initial) setLoading(true);
-      const data = await apiRequest('/orders/all');
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid order data received.');
+      if (publicMode) {
+        const data = await apiRequest('/orders/display');
+        const preparing = Array.isArray(data?.preparing) ? data.preparing : [];
+        const ready = Array.isArray(data?.ready) ? data.ready : [];
+        setOrders([...preparing, ...ready]);
+      } else {
+        const data = await apiRequest('/orders/all');
+        if (!Array.isArray(data)) {
+          throw new Error('Invalid order data received.');
+        }
+        setOrders(data);
       }
-      setOrders(data);
       setLastUpdated(new Date());
     } catch (error) {
       if (initial) {
@@ -45,7 +53,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     } finally {
       if (initial) setLoading(false);
     }
-  }, [showAlert]);
+  }, [publicMode, showAlert]);
 
   const fetchOrderPause = useCallback(async () => {
     try {
@@ -58,7 +66,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
   }, []);
 
   useEffect(() => {
-    if (!isLoggedIn || !isAdmin) return;
+    if (!publicMode && (!isLoggedIn || !isAdmin)) return;
     fetchOrders({ initial: true });
     fetchOrderPause();
     const timer = setInterval(() => {
@@ -66,7 +74,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
       fetchOrderPause();
     }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [isAdmin, isLoggedIn, fetchOrders, fetchOrderPause]);
+  }, [isAdmin, isLoggedIn, fetchOrders, fetchOrderPause, publicMode]);
 
   const preparingOrders = useMemo(
     () => orders
@@ -87,7 +95,8 @@ function AdminDisplayBoardPage({ kiosk = false }) {
   const handleOpenKioskWindow = () => {
     const width = window.screen.width;
     const height = window.screen.height;
-    window.open('/admin/display-window', 'DYPCET-Display-Kiosk', `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
+    const targetPath = publicMode ? '/display-window' : '/admin/display-window';
+    window.open(targetPath, 'DYPCET-Display-Kiosk', `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,scrollbars=no`);
   };
 
   const handleToggleFullscreen = () => {
@@ -101,7 +110,7 @@ function AdminDisplayBoardPage({ kiosk = false }) {
     }
   };
 
-  if (!isLoggedIn || !isAdmin) {
+  if (!publicMode && (!isLoggedIn || !isAdmin)) {
     return null;
   }
 
