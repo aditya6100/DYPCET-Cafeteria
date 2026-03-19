@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import './AdminDisplayBoardPage.css';
 
 const REFRESH_INTERVAL_MS = 10000;
+const PUBLIC_REFRESH_INTERVAL_MS = 15000;
+const PUBLIC_PAUSE_REFRESH_INTERVAL_MS = 60000;
 
 function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [orders, setOrders] = useState([]);
@@ -69,11 +71,20 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     if (!publicMode && (!isLoggedIn || !isAdmin)) return;
     fetchOrders({ initial: true });
     fetchOrderPause();
-    const timer = setInterval(() => {
+
+    const refreshMs = publicMode ? PUBLIC_REFRESH_INTERVAL_MS : REFRESH_INTERVAL_MS;
+    const ordersTimer = setInterval(() => {
       fetchOrders({ initial: false });
-      fetchOrderPause();
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
+    }, refreshMs);
+
+    const pauseTimer = publicMode
+      ? setInterval(() => { fetchOrderPause(); }, PUBLIC_PAUSE_REFRESH_INTERVAL_MS)
+      : setInterval(() => { fetchOrderPause(); }, refreshMs);
+
+    return () => {
+      clearInterval(ordersTimer);
+      clearInterval(pauseTimer);
+    };
   }, [isAdmin, isLoggedIn, fetchOrders, fetchOrderPause, publicMode]);
 
   const preparingOrders = useMemo(

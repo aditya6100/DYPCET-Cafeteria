@@ -119,6 +119,9 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     const SGST_RATE = 0.025;
     const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
+    const DISPLAY_CACHE_MS = Math.max(0, Number(process.env.DISPLAY_CACHE_MS || 3000));
+    let displayCache = { ts: 0, data: null };
+
     const normalizeOrderItemsForTotals = (rawItems) => {
         if (!Array.isArray(rawItems)) return [];
         return rawItems
@@ -1243,32 +1246,26 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @route   GET /api/orders/display
     // @access  Public (or protected if needed, but display board usually needs to be accessible)
     router.get('/display', asyncHandler(async (req, res) => {
+        const now = Date.now();
+        if (displayCache.data && DISPLAY_CACHE_MS > 0 && (now - displayCache.ts) < DISPLAY_CACHE_MS) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json(displayCache.data);
+        }
+
         const orderCols = await getOrdersColumns();
         const tokenSelect = orderCols.has('token_number') ? ', token_number' : '';
         const preparing = await db.query(
-            `SELECT id${tokenSelect}, status, timestamp, user_id FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20`
+            `SELECT id${tokenSelect}, status, timestamp FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20`
         );
         const ready = await db.query(
-            `SELECT id${tokenSelect}, status, timestamp, user_id FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20`
+            `SELECT id${tokenSelect}, status, timestamp FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20`
         );
 
-        // Map them to include customer names if possible
-        const fetchNames = async (orderList) => {
-            const enriched = [];
-            for (const o of orderList) {
-                const user = await db.query("SELECT name FROM users WHERE id = ?", [o.user_id]);
-                enriched.push({
-                    ...o,
-                    customer_name: user?.[0]?.name || 'Customer'
-                });
-            }
-            return enriched;
-        };
+        const payload = { preparing, ready, generatedAt: new Date().toISOString() };
+        displayCache = { ts: now, data: payload };
 
-        res.json({
-            preparing: await fetchNames(preparing),
-            ready: await fetchNames(ready)
-        });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(payload);
     }));
 
     // @desc    Get order history for logged-in user

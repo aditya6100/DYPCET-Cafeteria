@@ -8,9 +8,12 @@ module.exports = (config) => {
         return poolInstance;
     }
 
+    const envLimit = Number(process.env.DB_POOL_LIMIT || 4);
+    const connectionLimit = Number.isFinite(envLimit) && envLimit > 0 ? Math.floor(envLimit) : 4;
+
     // Create a connection pool instead of a single connection for better performance and management
     const pool = mysql.createPool({
-        connectionLimit: 10, // Max number of connections in pool
+        connectionLimit, // Max number of connections in pool
         host: config.db.host,
         user: config.db.user,
         password: config.db.password,
