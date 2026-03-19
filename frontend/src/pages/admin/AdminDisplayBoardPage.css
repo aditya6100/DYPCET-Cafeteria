@@ -237,6 +237,24 @@
   resize: vertical;
 }
 
+.tts-unlock-banner {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #ffe1b5;
+  border-radius: 10px;
+  background: #fff7ea;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tts-unlock-sub {
+  color: #5a6b7f;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
 .fullscreen-btn {
   background: #0A2342;
   color: white;

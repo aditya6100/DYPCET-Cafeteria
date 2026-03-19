@@ -16,6 +16,31 @@ const clampNumber = (value, min, max, fallback) => {
   return Math.max(min, Math.min(max, n));
 };
 
+const getSpeechVoices = () => {
+  try {
+    if (!window.speechSynthesis) return [];
+    return window.speechSynthesis.getVoices() || [];
+  } catch (_error) {
+    return [];
+  }
+};
+
+const pickPreferredVoice = (voices) => {
+  const list = Array.isArray(voices) ? voices : [];
+  if (list.length === 0) return null;
+
+  const preferLang = (v) => String(v.lang || '').toLowerCase();
+  const preferName = (v) => String(v.name || '').toLowerCase();
+
+  const enIn = list.find((v) => preferLang(v).startsWith('en-in'));
+  if (enIn) return enIn;
+  const en = list.find((v) => preferLang(v).startsWith('en'));
+  if (en) return en;
+  const google = list.find((v) => preferName(v).includes('google'));
+  if (google) return google;
+  return list[0];
+};
+
 const playBeep = async ({ durationMs = 180, frequency = 880, volume = 0.12 } = {}) => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -40,12 +65,18 @@ const playBeep = async ({ durationMs = 180, frequency = 880, volume = 0.12 } = {
   }
 };
 
-const speakText = (text) => {
+const speakText = (text, voice = null) => {
   try {
     const trimmed = String(text || '').trim();
     if (!trimmed) return;
     if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
     const utterance = new SpeechSynthesisUtterance(trimmed);
+    if (voice) {
+      utterance.voice = voice;
+      if (voice.lang) utterance.lang = voice.lang;
+    } else {
+      utterance.lang = 'en-IN';
+    }
     utterance.rate = 0.95;
     utterance.pitch = 1;
     utterance.volume = 1;
@@ -63,6 +94,8 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [displaySettings, setDisplaySettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [announcementDraft, setAnnouncementDraft] = useState('');
+  const [ttsUnlocked, setTtsUnlocked] = useState(() => localStorage.getItem('tts_unlocked') === '1');
+  const [voices, setVoices] = useState(() => getSpeechVoices());
   const containerRef = useRef(null);
   const announcedReadyRef = useRef(new Set());
   const initializedReadyRef = useRef(false);
@@ -131,6 +164,24 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
       // Silent: display board should still work even if settings API fails.
     }
   }, [announcementDraft]);
+
+  useEffect(() => {
+    if (!window.speechSynthesis) return undefined;
+
+    const refresh = () => setVoices(getSpeechVoices());
+    refresh();
+    window.speechSynthesis.onvoiceschanged = refresh;
+    return () => {
+      try {
+        window.speechSynthesis.onvoiceschanged = null;
+      } catch (_error) {
+        // ignore
+      }
+    };
+  }, []);
+
+  const preferredVoice = useMemo(() => pickPreferredVoice(voices), [voices]);
+  const isTtsSupported = Boolean(window.speechSynthesis && window.SpeechSynthesisUtterance);
 
   useEffect(() => {
     if (!publicMode && (!isLoggedIn || !isAdmin)) return;
@@ -202,8 +253,8 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
             // eslint-disable-next-line no-await-in-loop
             await playBeep({ durationMs: 180, frequency: 880, volume: 0.12 });
           }
-          if (ttsEnabled) {
-            speakText(`Order number ${orderNo} is ready`);
+          if (ttsEnabled && isTtsSupported && ttsUnlocked) {
+            speakText(`Order number ${orderNo} is ready`, preferredVoice);
           }
           // eslint-disable-next-line no-await-in-loop
           await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -212,7 +263,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     };
 
     run();
-  }, [displaySettings, readyOrders]);
+  }, [displaySettings, isTtsSupported, preferredVoice, readyOrders, ttsUnlocked]);
 
   useEffect(() => {
     const announcementId = Number(displaySettings?.announcement_id || 0);
@@ -221,10 +272,31 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     if (announcementId === lastAnnouncementIdRef.current) return;
     lastAnnouncementIdRef.current = announcementId;
 
-    if (Boolean(displaySettings?.tts_enabled)) {
-      speakText(text);
+    if (Boolean(displaySettings?.tts_enabled) && isTtsSupported && ttsUnlocked) {
+      speakText(text, preferredVoice);
     }
-  }, [displaySettings]);
+  }, [displaySettings, isTtsSupported, preferredVoice, ttsUnlocked]);
+
+  const handleUnlockTts = async () => {
+    try {
+      setTtsUnlocked(true);
+      localStorage.setItem('tts_unlocked', '1');
+      await playBeep({ durationMs: 120, frequency: 660, volume: 0.12 });
+      if (isTtsSupported) {
+        speakText('Announcements enabled', preferredVoice);
+      }
+    } catch (_error) {
+      // ignore
+    }
+  };
+
+  const handleTestTts = () => {
+    if (!isTtsSupported) {
+      showAlert('Text-to-speech is not supported in this browser/device.', 'error');
+      return;
+    }
+    speakText('Test announcement. DYPCET cafeteria display board.', preferredVoice);
+  };
 
   const handleSaveSettings = async () => {
     if (publicMode) return;
@@ -362,6 +434,18 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
           </div>
         )}
 
+        {Boolean(displaySettings?.tts_enabled) && isTtsSupported && !ttsUnlocked && (
+          <div className="tts-unlock-banner no-print">
+            <div>
+              <strong>Enable announcements</strong>
+              <div className="tts-unlock-sub">Tap once to allow voice announcements on this device.</div>
+            </div>
+            <button type="button" className="fullscreen-btn" onClick={handleUnlockTts}>
+              Enable Voice
+            </button>
+          </div>
+        )}
+
         <footer className="display-footer no-print">
           {!publicMode && !kiosk ? (
             <button onClick={handleOpenKioskWindow} className="fullscreen-btn">
@@ -416,6 +500,9 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
               </label>
               <button type="button" className="fullscreen-btn" onClick={handleSaveSettings} disabled={savingSettings}>
                 {savingSettings ? 'Saving...' : 'Save Settings'}
+              </button>
+              <button type="button" className="fullscreen-btn" onClick={handleTestTts} disabled={!isTtsSupported}>
+                Test TTS
               </button>
             </div>
 
