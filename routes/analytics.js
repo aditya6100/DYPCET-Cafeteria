@@ -135,6 +135,8 @@ module.exports = (config, db, auth) => {
         sum + (toNumber(item?.price) * toNumber(item?.quantity))
     ), 0));
 
+    const isValidIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+
     // @desc    Admin analytics dashboard data
     // @route   GET /api/analytics/admin
     // @access  Admin/Staff
@@ -389,6 +391,109 @@ module.exports = (config, db, auth) => {
             refundStats,
             feedbackInsights,
             dailyAnalytics
+        });
+    }));
+
+    // @desc    Admin day-wise billing + item demand report
+    // @route   GET /api/analytics/admin/day?date=YYYY-MM-DD
+    // @access  Admin/Staff
+    router.get('/admin/day', protect, admin, asyncHandler(async (req, res) => {
+        const date = String(req.query?.date || '').trim();
+        if (!isValidIsoDate(date)) {
+            res.status(400);
+            throw new Error('Valid date (YYYY-MM-DD) is required.');
+        }
+
+        const orderCols = await getOrdersColumns();
+        const selectCols = ['id', 'total', 'status', 'timestamp', 'items', 'refund_status', 'refund_amount'];
+        if (orderCols.has('payment_status')) selectCols.push('payment_status');
+        if (orderCols.has('payment_method')) selectCols.push('payment_method');
+        if (orderCols.has('order_source')) selectCols.push('order_source');
+
+        const rows = await db.query(
+            `SELECT ${selectCols.join(', ')}
+             FROM orders
+             WHERE DATE(timestamp) = ?`,
+            [date]
+        );
+
+        const menuRows = await db.query(`SELECT id, name FROM menu_items`);
+        const menuById = new Map((menuRows || []).map((r) => [Number(r.id), String(r.name || 'Item').trim() || 'Item']));
+
+        const paidOrders = (rows || []).filter((row) => isPaidOrder(row, orderCols));
+        const modes = {
+            online: { orders: 0, revenue: 0 },
+            offline: { orders: 0, revenue: 0 },
+            unknown: { orders: 0, revenue: 0 }
+        };
+
+        let grossRevenue = 0;
+        let refundedAmount = 0;
+        let taxCollected = 0;
+
+        const itemAgg = new Map(); // key -> { id, name, quantity, revenue }
+        for (const row of paidOrders) {
+            const mode = classifyOrderMode(row, orderCols);
+            const orderTotal = toNumber(row.total);
+            modes[mode].orders += 1;
+            modes[mode].revenue = roundMoney(modes[mode].revenue + orderTotal);
+
+            grossRevenue = roundMoney(grossRevenue + orderTotal);
+            if (String(row.refund_status || '').toLowerCase() === 'processed') {
+                refundedAmount = roundMoney(refundedAmount + toNumber(row.refund_amount));
+            }
+
+            const items = getOrderItemsArray(row);
+            const subTotal = computeOrderSubtotal(items);
+            const tax = Math.max(0, roundMoney(orderTotal - subTotal));
+            taxCollected = roundMoney(taxCollected + tax);
+
+            for (const item of items) {
+                const itemId = Number(item?.id);
+                const resolvedName = (Number.isFinite(itemId) && menuById.has(itemId))
+                    ? menuById.get(itemId)
+                    : String(item?.name || 'Item').trim() || 'Item';
+                const key = Number.isFinite(itemId) ? `id:${itemId}` : `name:${resolvedName.toLowerCase()}`;
+                const quantity = toNumber(item?.quantity);
+                const price = toNumber(item?.price);
+                const revenue = roundMoney(quantity * price);
+
+                if (!itemAgg.has(key)) {
+                    itemAgg.set(key, {
+                        id: Number.isFinite(itemId) ? itemId : null,
+                        name: resolvedName,
+                        quantity: 0,
+                        revenue: 0
+                    });
+                }
+                const entry = itemAgg.get(key);
+                entry.quantity = toNumber(entry.quantity) + quantity;
+                entry.revenue = roundMoney(toNumber(entry.revenue) + revenue);
+            }
+        }
+
+        const items = [...itemAgg.values()]
+            .map((item) => ({
+                ...item,
+                avgPrice: item.quantity > 0 ? roundMoney(item.revenue / item.quantity) : 0
+            }))
+            .sort((a, b) => b.revenue - a.revenue);
+
+        const netRevenue = roundMoney(grossRevenue - refundedAmount);
+
+        res.json({
+            date,
+            totals: {
+                totalOrders: paidOrders.length,
+                grossRevenue,
+                refundedAmount,
+                netRevenue,
+                taxCollected,
+                cgstCollected: roundMoney(taxCollected / 2),
+                sgstCollected: roundMoney(taxCollected / 2)
+            },
+            modes,
+            items
         });
     }));
 

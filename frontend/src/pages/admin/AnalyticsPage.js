@@ -5,6 +5,14 @@ import { useAlert } from '../../hooks/useAlert';
 import './AnalyticsPage.css';
 
 const formatMoney = (value) => `INR ${Number(value || 0).toFixed(2)}`;
+const toIsoDate = (value) => {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 function AdminAnalyticsView({ data }) {
   const billing = useMemo(() => data?.billing || {}, [data]);
@@ -276,6 +284,9 @@ function AnalyticsPage() {
   const { showAlert } = useAlert();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => toIsoDate(new Date()));
+  const [dayLoading, setDayLoading] = useState(false);
+  const [dayReport, setDayReport] = useState(null);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -296,6 +307,25 @@ function AnalyticsPage() {
     }
   }, [isAdmin, isFaculty, showAlert]);
 
+  useEffect(() => {
+    const fetchDayReport = async () => {
+      if (!isAdmin) return;
+      if (!selectedDate) return;
+      setDayLoading(true);
+      try {
+        const response = await apiRequest(`/analytics/admin/day?date=${encodeURIComponent(selectedDate)}`);
+        setDayReport(response);
+      } catch (error) {
+        setDayReport(null);
+        showAlert(`Could not load day report: ${error.message}`, 'error');
+      } finally {
+        setDayLoading(false);
+      }
+    };
+
+    fetchDayReport();
+  }, [isAdmin, selectedDate, showAlert]);
+
   if (loading) {
     return <div className="loader">Loading analytics...</div>;
   }
@@ -314,6 +344,80 @@ function AnalyticsPage() {
             : 'Notices, committee activity, and feedback trends'}
         </p>
       </div>
+
+      {isAdmin && (
+        <div className="analytics-two-col">
+          <article className="analytics-panel">
+            <h4>Day-wise Report</h4>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ color: '#3a526d' }}>Select Date</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                />
+              </label>
+              {dayLoading ? <span className="muted">Loading...</span> : null}
+            </div>
+
+            {!dayReport ? (
+              <p className="muted">No day report available.</p>
+            ) : (
+              <>
+                <div className="analytics-grid" style={{ marginBottom: 12 }}>
+                  <article className="analytics-card">
+                    <h4>Orders</h4>
+                    <p>{Number(dayReport?.totals?.totalOrders || 0)}</p>
+                    <small>Online {Number(dayReport?.modes?.online?.orders || 0)} · Offline {Number(dayReport?.modes?.offline?.orders || 0)}</small>
+                  </article>
+                  <article className="analytics-card">
+                    <h4>Gross</h4>
+                    <p>{formatMoney(dayReport?.totals?.grossRevenue)}</p>
+                    <small>Net {formatMoney(dayReport?.totals?.netRevenue)}</small>
+                  </article>
+                  <article className="analytics-card">
+                    <h4>Tax (CGST+SGST)</h4>
+                    <p>{formatMoney(dayReport?.totals?.taxCollected)}</p>
+                    <small>CGST {formatMoney(dayReport?.totals?.cgstCollected)} · SGST {formatMoney(dayReport?.totals?.sgstCollected)}</small>
+                  </article>
+                  <article className="analytics-card">
+                    <h4>Refunded</h4>
+                    <p>{formatMoney(dayReport?.totals?.refundedAmount)}</p>
+                  </article>
+                </div>
+
+                {(dayReport?.items || []).length === 0 ? (
+                  <p className="muted">No items ordered on this date.</p>
+                ) : (
+                  <div className="analytics-table-wrap">
+                    <table className="analytics-table">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Qty</th>
+                          <th>Avg Price</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dayReport.items.map((item) => (
+                          <tr key={`day-item-${item.id ?? item.name}`}>
+                            <td>{item.name}</td>
+                            <td>{Number(item.quantity || 0)}</td>
+                            <td>{formatMoney(item.avgPrice)}</td>
+                            <td>{formatMoney(item.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </article>
+        </div>
+      )}
 
       {isAdmin ? <AdminAnalyticsView data={data} /> : <FacultyAnalyticsView data={data} />}
     </div>
