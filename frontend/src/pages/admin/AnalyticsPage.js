@@ -7,9 +7,12 @@ import './AnalyticsPage.css';
 const formatMoney = (value) => `INR ${Number(value || 0).toFixed(2)}`;
 
 function AdminAnalyticsView({ data }) {
+  const billing = useMemo(() => data?.billing || {}, [data]);
+  const demand = useMemo(() => data?.demand || {}, [data]);
   const peakHours = useMemo(() => data?.peakHours || [], [data]);
   const topItems = useMemo(() => data?.topItems || [], [data]);
   const daily = useMemo(() => data?.dailyAnalytics || [], [data]);
+  const itemDailyMatrix = useMemo(() => data?.itemDailyMatrix || null, [data]);
 
   return (
     <div className="analytics-section">
@@ -29,6 +32,26 @@ function AdminAnalyticsView({ data }) {
         <article className="analytics-card">
           <h4>Refunded Amount</h4>
           <p>{formatMoney(data?.totals?.refundedAmount)}</p>
+        </article>
+        <article className="analytics-card">
+          <h4>Online Orders</h4>
+          <p>{Number(billing?.onlineOrders || 0)}</p>
+          <small>{formatMoney(billing?.onlineRevenue)}</small>
+        </article>
+        <article className="analytics-card">
+          <h4>Offline Orders</h4>
+          <p>{Number(billing?.offlineOrders || 0)}</p>
+          <small>{formatMoney(billing?.offlineRevenue)}</small>
+        </article>
+        <article className="analytics-card">
+          <h4>Tax Collected (CGST+SGST)</h4>
+          <p>{formatMoney(billing?.taxCollected)}</p>
+          <small>CGST {formatMoney(billing?.cgstCollected)} · SGST {formatMoney(billing?.sgstCollected)}</small>
+        </article>
+        <article className="analytics-card">
+          <h4>Avg Order Value</h4>
+          <p>{formatMoney(billing?.averageOrderValue)}</p>
+          <small>Last {Number(billing?.daysWindow || 0) || 30} days</small>
         </article>
       </div>
 
@@ -68,6 +91,40 @@ function AdminAnalyticsView({ data }) {
 
       <div className="analytics-two-col">
         <article className="analytics-panel">
+          <h4>High Demand Items</h4>
+          {(demand?.highDemand || []).length === 0 ? (
+            <p className="muted">No demand data.</p>
+          ) : (
+            <ul className="analytics-list compact">
+              {demand.highDemand.map((item) => (
+                <li key={`high-${item.id}`}>
+                  <span>{item.name}</span>
+                  <strong>{Number(item.quantity || 0)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="analytics-panel">
+          <h4>Low Demand Items</h4>
+          {(demand?.lowDemand || []).length === 0 ? (
+            <p className="muted">No demand data.</p>
+          ) : (
+            <ul className="analytics-list compact">
+              {demand.lowDemand.map((item) => (
+                <li key={`low-${item.id}`}>
+                  <span>{item.name}</span>
+                  <strong>{Number(item.quantity || 0)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      </div>
+
+      <div className="analytics-two-col">
+        <article className="analytics-panel">
           <h4>Refund Stats</h4>
           <ul className="analytics-list">
             <li><span>Requested</span><strong>{Number(data?.refundStats?.requested || 0)}</strong></li>
@@ -76,6 +133,39 @@ function AdminAnalyticsView({ data }) {
             <li><span>Processed</span><strong>{Number(data?.refundStats?.processed || 0)}</strong></li>
             <li><span>Processed Amount</span><strong>{formatMoney(data?.refundStats?.totalProcessedAmount)}</strong></li>
           </ul>
+        </article>
+      </div>
+
+      <div className="analytics-two-col">
+        <article className="analytics-panel">
+          <h4>Item Demand By Day</h4>
+          {!itemDailyMatrix?.rows?.length ? (
+            <p className="muted">No item daily data.</p>
+          ) : (
+            <div className="analytics-table-wrap">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    {(itemDailyMatrix.items || []).map((item) => (
+                      <th key={`matrix-head-${item.key}`}>{item.name}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {itemDailyMatrix.rows.map((row) => (
+                    <tr key={`matrix-row-${row.day}`}>
+                      <td>{new Date(row.day).toLocaleDateString()}</td>
+                      {(row.quantities || []).map((qty, idx) => (
+                        <td key={`matrix-cell-${row.day}-${idx}`}>{Number(qty || 0)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <small className="muted">Top items are selected automatically for last {itemDailyMatrix?.days?.length || 0} days.</small>
         </article>
       </div>
 

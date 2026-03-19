@@ -6,6 +6,12 @@ const toNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const clampInt = (value, min, max) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return min;
+    return Math.max(min, Math.min(max, Math.floor(parsed)));
+};
+
 const normalizeText = (value = '') => String(value || '').toLowerCase();
 
 const classifySentiment = (text = '') => {
@@ -62,18 +68,103 @@ const computeFeedbackInsights = (rows = []) => {
     return { sentiment, topComplaintCategories };
 };
 
+const safeJsonParse = (value, fallback) => {
+    try {
+        if (value === null || value === undefined) return fallback;
+        if (typeof value === 'object') return value;
+        return JSON.parse(value);
+    } catch (_error) {
+        return fallback;
+    }
+};
+
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
 module.exports = (config, db, auth) => {
     const router = express.Router();
     const { protect, admin } = auth;
+
+    // Cache orders columns to avoid selecting columns that don't exist across deployments.
+    let ordersColumnCache = { fetchedAt: 0, columns: new Set() };
+    const getOrdersColumns = async () => {
+        const now = Date.now();
+        if (ordersColumnCache.fetchedAt && (now - ordersColumnCache.fetchedAt) < 60 * 1000) {
+            return ordersColumnCache.columns;
+        }
+
+        const cols = await db.query(
+            `SELECT COLUMN_NAME
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'orders'`
+        );
+        ordersColumnCache = {
+            fetchedAt: now,
+            columns: new Set((cols || []).map((c) => String(c.COLUMN_NAME)))
+        };
+        return ordersColumnCache.columns;
+    };
+
+    const isPaidOrder = (row, orderCols) => {
+        const status = String(row.status || '').toLowerCase();
+        if (status === 'cancelled') return false;
+        if (orderCols.has('payment_status')) {
+            return String(row.payment_status || '').toLowerCase() === 'paid';
+        }
+        return status !== 'awaiting payment';
+    };
+
+    const classifyOrderMode = (row, orderCols) => {
+        const rawSource = orderCols.has('order_source') ? String(row.order_source || '') : '';
+        const rawMethod = orderCols.has('payment_method') ? String(row.payment_method || '') : '';
+        const source = rawSource.toLowerCase();
+        const method = rawMethod.toLowerCase();
+
+        if (source === 'offline' || method === 'cash') return 'offline';
+        if (source === 'online' || method === 'online') return 'online';
+        if (method.includes('upi')) return 'online';
+        return 'unknown';
+    };
+
+    const getOrderItemsArray = (row) => {
+        const parsed = safeJsonParse(row.items, []);
+        return Array.isArray(parsed) ? parsed : [];
+    };
+
+    const computeOrderSubtotal = (items) => roundMoney((items || []).reduce((sum, item) => (
+        sum + (toNumber(item?.price) * toNumber(item?.quantity))
+    ), 0));
 
     // @desc    Admin analytics dashboard data
     // @route   GET /api/analytics/admin
     // @access  Admin/Staff
     router.get('/admin', protect, admin, asyncHandler(async (req, res) => {
+        const days = clampInt(req.query?.days ?? 30, 1, 180);
+        const itemDays = clampInt(req.query?.itemDays ?? 14, 1, 60);
+        const topItemsLimit = clampInt(req.query?.topItems ?? 10, 1, 40);
+        const matrixItemsLimit = clampInt(req.query?.matrixItems ?? 8, 1, 12);
+        const maxDays = Math.max(days, itemDays, 30);
+
+        const orderCols = await getOrdersColumns();
+        const selectCols = ['id', 'total', 'status', 'timestamp', 'items', 'refund_status', 'refund_amount'];
+        if (orderCols.has('payment_status')) selectCols.push('payment_status');
+        if (orderCols.has('payment_method')) selectCols.push('payment_method');
+        if (orderCols.has('order_source')) selectCols.push('order_source');
+        if (orderCols.has('token_number')) selectCols.push('token_number');
+
         const orderRows = await db.query(
-            `SELECT id, total, status, timestamp, items, payment_status, refund_status, refund_amount
-             FROM orders`
+            `SELECT ${selectCols.join(', ')}
+             FROM orders
+             WHERE timestamp >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+            [maxDays]
         );
+
+        const menuRows = await db.query(`SELECT id, name FROM menu_items`);
+        const menuItems = (menuRows || []).map((row) => ({
+            id: Number(row.id),
+            name: String(row.name || 'Item').trim() || 'Item'
+        }));
+        const menuById = new Map(menuItems.map((i) => [Number(i.id), i.name]));
 
         const refundStatsRows = await db.query(
             `SELECT refund_status, COUNT(*) AS total, SUM(COALESCE(refund_amount, 0)) AS amount
@@ -82,72 +173,171 @@ module.exports = (config, db, auth) => {
              GROUP BY refund_status`
         );
 
-        const peakHourRows = await db.query(
-            `SELECT HOUR(timestamp) AS hour_of_day, COUNT(*) AS total
-             FROM orders
-             WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY HOUR(timestamp)
-             ORDER BY total DESC, hour_of_day ASC
-             LIMIT 5`
-        );
-
-        const last30OrderRows = await db.query(
-            `SELECT items
-             FROM orders
-             WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
-        );
-
         const feedbackRows = await db.query(
             `SELECT subject, message
              FROM feedback
              WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
         );
 
-        const dailyRows = await db.query(
-            `SELECT DATE(timestamp) AS day,
-                    COUNT(*) AS total_orders,
-                    SUM(COALESCE(total, 0)) AS gross_revenue,
-                    SUM(CASE WHEN LOWER(COALESCE(refund_status, '')) = 'processed'
-                             THEN COALESCE(refund_amount, 0)
-                             ELSE 0
-                        END) AS refunded_amount
-             FROM orders
-             WHERE timestamp >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-             GROUP BY DATE(timestamp)
-             ORDER BY day ASC`
-        );
+        const now = Date.now();
+        const inLastDays = (row, windowDays) => {
+            const ts = row.timestamp ? new Date(row.timestamp).getTime() : 0;
+            if (!ts) return false;
+            return ts >= (now - (windowDays * 24 * 60 * 60 * 1000));
+        };
 
-        const totalOrders = orderRows.length;
-        const grossRevenue = orderRows.reduce((sum, row) => sum + toNumber(row.total), 0);
-        const refundedAmount = orderRows
+        const paidOrdersRange = orderRows.filter((row) => inLastDays(row, days) && isPaidOrder(row, orderCols));
+        const paidOrders30 = orderRows.filter((row) => inLastDays(row, 30) && isPaidOrder(row, orderCols));
+        const paidOrdersMatrix = orderRows.filter((row) => inLastDays(row, itemDays) && isPaidOrder(row, orderCols));
+
+        const totalOrders = paidOrdersRange.length;
+        const grossRevenue = roundMoney(paidOrdersRange.reduce((sum, row) => sum + toNumber(row.total), 0));
+        const refundedAmount = roundMoney(paidOrdersRange
             .filter((row) => String(row.refund_status || '').toLowerCase() === 'processed')
-            .reduce((sum, row) => sum + toNumber(row.refund_amount), 0);
-        const netRevenue = grossRevenue - refundedAmount;
+            .reduce((sum, row) => sum + toNumber(row.refund_amount), 0));
+        const netRevenue = roundMoney(grossRevenue - refundedAmount);
 
-        const topItemsMap = {};
-        for (const row of last30OrderRows) {
-            let items = [];
-            if (Array.isArray(row.items)) {
-                items = row.items;
-            } else if (typeof row.items === 'string') {
-                try {
-                    items = JSON.parse(row.items);
-                } catch (error) {
-                    items = [];
-                }
-            }
+        const modeStats = {
+            online: { orders: 0, revenue: 0 },
+            offline: { orders: 0, revenue: 0 },
+            unknown: { orders: 0, revenue: 0 }
+        };
+        let taxCollected = 0;
 
+        const itemQtyMap = new Map();
+        const itemRevenueMap = new Map();
+        const itemOrderCountMap = new Map();
+
+        for (const row of paidOrdersRange) {
+            const mode = classifyOrderMode(row, orderCols);
+            const amount = toNumber(row.total);
+            modeStats[mode].orders += 1;
+            modeStats[mode].revenue = roundMoney(modeStats[mode].revenue + amount);
+
+            const items = getOrderItemsArray(row);
+            const subTotal = computeOrderSubtotal(items);
+            const tax = Math.max(0, roundMoney(amount - subTotal));
+            taxCollected = roundMoney(taxCollected + tax);
+
+            const countedKeys = new Set();
             for (const item of items) {
-                const name = String(item?.name || 'Unknown Item').trim();
-                const quantity = toNumber(item?.quantity || 0);
-                topItemsMap[name] = (topItemsMap[name] || 0) + quantity;
+                const itemId = Number(item?.id);
+                const name = (Number.isFinite(itemId) && menuById.has(itemId))
+                    ? menuById.get(itemId)
+                    : String(item?.name || 'Item').trim() || 'Item';
+                const key = Number.isFinite(itemId) ? `id:${itemId}` : `name:${name.toLowerCase()}`;
+                const qty = toNumber(item?.quantity);
+                const price = toNumber(item?.price);
+
+                itemQtyMap.set(key, toNumber(itemQtyMap.get(key)) + qty);
+                itemRevenueMap.set(key, roundMoney(toNumber(itemRevenueMap.get(key)) + (qty * price)));
+                if (!countedKeys.has(key)) {
+                    itemOrderCountMap.set(key, toNumber(itemOrderCountMap.get(key)) + 1);
+                    countedKeys.add(key);
+                }
             }
         }
 
-        const topItems = Object.entries(topItemsMap)
+        const keyToLabel = (key) => {
+            if (key.startsWith('id:')) {
+                const id = Number(key.slice(3));
+                return menuById.get(id) || `Item ${id}`;
+            }
+            return key.slice(5);
+        };
+
+        const topItems = [...itemQtyMap.entries()]
             .sort((a, b) => b[1] - a[1])
             .slice(0, 8)
-            .map(([name, quantity]) => ({ name, quantity }));
+            .map(([key, quantity]) => ({ name: keyToLabel(key), quantity }));
+
+        const peakHourMap = {};
+        for (const row of paidOrders30) {
+            const ts = row.timestamp ? new Date(row.timestamp) : null;
+            if (!ts) continue;
+            const hour = ts.getHours();
+            peakHourMap[hour] = (peakHourMap[hour] || 0) + 1;
+        }
+        const peakHours = Object.entries(peakHourMap)
+            .map(([hour, totalOrdersCount]) => ({ hour: Number(hour), totalOrders: totalOrdersCount }))
+            .sort((a, b) => b.totalOrders - a.totalOrders)
+            .slice(0, 5);
+
+        const dailyAnalyticsMap = new Map();
+        for (const row of orderRows) {
+            if (!inLastDays(row, 14)) continue;
+            if (!isPaidOrder(row, orderCols)) continue;
+            const day = row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 10) : null;
+            if (!day) continue;
+            if (!dailyAnalyticsMap.has(day)) {
+                dailyAnalyticsMap.set(day, { day, orders: 0, grossRevenue: 0, refundedAmount: 0 });
+            }
+            const entry = dailyAnalyticsMap.get(day);
+            entry.orders += 1;
+            entry.grossRevenue = roundMoney(entry.grossRevenue + toNumber(row.total));
+            if (String(row.refund_status || '').toLowerCase() === 'processed') {
+                entry.refundedAmount = roundMoney(entry.refundedAmount + toNumber(row.refund_amount));
+            }
+        }
+        const dailyAnalytics = [...dailyAnalyticsMap.values()]
+            .sort((a, b) => a.day.localeCompare(b.day))
+            .map((row) => ({
+                day: row.day,
+                orders: row.orders,
+                grossRevenue: roundMoney(row.grossRevenue),
+                refundedAmount: roundMoney(row.refundedAmount),
+                netRevenue: roundMoney(row.grossRevenue - row.refundedAmount)
+            }));
+
+        const matrixTopKeys = [...itemQtyMap.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, matrixItemsLimit)
+            .map(([key]) => key);
+
+        const dailyMatrixMap = new Map(); // day -> key -> qty
+        for (const row of paidOrdersMatrix) {
+            const day = row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 10) : null;
+            if (!day) continue;
+            if (!dailyMatrixMap.has(day)) dailyMatrixMap.set(day, new Map());
+            const dayMap = dailyMatrixMap.get(day);
+
+            const items = getOrderItemsArray(row);
+            for (const item of items) {
+                const itemId = Number(item?.id);
+                const name = (Number.isFinite(itemId) && menuById.has(itemId))
+                    ? menuById.get(itemId)
+                    : String(item?.name || 'Item').trim() || 'Item';
+                const key = Number.isFinite(itemId) ? `id:${itemId}` : `name:${name.toLowerCase()}`;
+                if (!matrixTopKeys.includes(key)) continue;
+                const qty = toNumber(item?.quantity);
+                dayMap.set(key, toNumber(dayMap.get(key)) + qty);
+            }
+        }
+
+        const matrixDays = [];
+        for (let i = itemDays - 1; i >= 0; i -= 1) {
+            const d = new Date(now - (i * 24 * 60 * 60 * 1000));
+            matrixDays.push(d.toISOString().slice(0, 10));
+        }
+
+        const itemDailyMatrix = {
+            days: matrixDays,
+            items: matrixTopKeys.map((key) => ({ key, name: keyToLabel(key) })),
+            rows: matrixDays.map((day) => {
+                const m = dailyMatrixMap.get(day) || new Map();
+                return {
+                    day,
+                    quantities: matrixTopKeys.map((key) => toNumber(m.get(key)))
+                };
+            })
+        };
+
+        const menuDemand = menuItems.map((item) => {
+            const key = `id:${item.id}`;
+            return { id: item.id, name: item.name, quantity: toNumber(itemQtyMap.get(key)) };
+        });
+        const highDemand = [...menuDemand].sort((a, b) => b.quantity - a.quantity).slice(0, topItemsLimit);
+        const lowDemand = [...menuDemand].sort((a, b) => a.quantity - b.quantity).slice(0, topItemsLimit);
 
         const refundStats = {
             requested: 0,
@@ -172,28 +362,33 @@ module.exports = (config, db, auth) => {
         res.json({
             totals: {
                 totalOrders,
-                grossRevenue: Number(grossRevenue.toFixed(2)),
-                netRevenue: Number(netRevenue.toFixed(2)),
-                refundedAmount: Number(refundedAmount.toFixed(2))
+                grossRevenue,
+                netRevenue,
+                refundedAmount
             },
-            peakHours: (peakHourRows || []).map((row) => ({
-                hour: Number(row.hour_of_day),
-                totalOrders: Number(row.total)
-            })),
+            billing: {
+                daysWindow: days,
+                onlineOrders: modeStats.online.orders,
+                offlineOrders: modeStats.offline.orders,
+                unknownOrders: modeStats.unknown.orders,
+                onlineRevenue: modeStats.online.revenue,
+                offlineRevenue: modeStats.offline.revenue,
+                unknownRevenue: modeStats.unknown.revenue,
+                taxCollected,
+                cgstCollected: roundMoney(taxCollected / 2),
+                sgstCollected: roundMoney(taxCollected / 2),
+                averageOrderValue: totalOrders > 0 ? roundMoney(grossRevenue / totalOrders) : 0
+            },
+            demand: {
+                highDemand,
+                lowDemand
+            },
+            itemDailyMatrix,
+            peakHours,
             topItems,
             refundStats,
             feedbackInsights,
-            dailyAnalytics: (dailyRows || []).map((row) => {
-                const gross = Number(toNumber(row.gross_revenue).toFixed(2));
-                const refunded = Number(toNumber(row.refunded_amount).toFixed(2));
-                return {
-                    day: row.day,
-                    orders: Number(row.total_orders || 0),
-                    grossRevenue: gross,
-                    refundedAmount: refunded,
-                    netRevenue: Number((gross - refunded).toFixed(2))
-                };
-            })
+            dailyAnalytics
         });
     }));
 
