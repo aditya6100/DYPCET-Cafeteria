@@ -70,6 +70,22 @@ const speakText = (text, voice = null) => {
   }
 };
 
+const isSameLocalDate = (a, b) => (
+  a.getFullYear() === b.getFullYear()
+  && a.getMonth() === b.getMonth()
+  && a.getDate() === b.getDate()
+);
+
+const getDisplayOrderNo = (order) => {
+  const id = order?.id;
+  const token = order?.token_number;
+  const ts = order?.timestamp ? new Date(order.timestamp) : null;
+  if (!ts || Number.isNaN(ts.getTime())) return token || id;
+  const today = new Date();
+  // Token numbers are per-day. For previous days, show the global order id instead.
+  return isSameLocalDate(ts, today) ? (token || id) : id;
+};
+
 function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +100,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const announcedReadyRef = useRef(new Set());
   const initializedReadyRef = useRef(false);
   const lastAnnouncementIdRef = useRef(0);
+  const announcementDirtyRef = useRef(false);
   const { showAlert } = useAlert();
   const { isLoggedIn, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -145,13 +162,13 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
       const data = await apiRequest('/menu/display-board');
       if (!data || typeof data !== 'object') return;
       setDisplaySettings(data);
-      if (!announcementDraft) {
-        setAnnouncementDraft(String(data?.announcement_text || ''));
+      if (!announcementDirtyRef.current) {
+        setAnnouncementDraft((prev) => (prev ? prev : String(data?.announcement_text || '')));
       }
     } catch (_error) {
       // Silent: display board should still work even if settings API fails.
     }
-  }, [announcementDraft]);
+  }, []);
 
   useEffect(() => {
     if (!window.speechSynthesis) return undefined;
@@ -245,7 +262,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     const run = async () => {
       for (const order of newlyReady) {
         announcedReadyRef.current.add(Number(order.id));
-        const orderNo = order.token_number || order.id;
+        const orderNo = getDisplayOrderNo(order);
         // eslint-disable-next-line no-await-in-loop
         await announceOrderReady(orderNo);
       }
@@ -288,7 +305,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
 
   const handleManualAnnounce = (order) => {
     if (publicMode) return;
-    const orderNo = order?.token_number || order?.id;
+    const orderNo = getDisplayOrderNo(order);
     if (!orderNo) return;
     if (Boolean(displaySettings?.tts_enabled) && isTtsSupported && !ttsUnlocked) {
       showAlert('Tap "Enable Voice" once to allow announcements on this device.', 'info');
@@ -417,7 +434,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
                       } : undefined}
                       title={!publicMode ? 'Click to announce' : undefined}
                     >
-                      #{order.token_number || order.id}
+                      #{getDisplayOrderNo(order)}
                     </div>
                   ))
                 )}
@@ -435,7 +452,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
                 ) : (
                   preparingOrders.map((order) => (
                     <div key={`prep-${order.id}`} className="order-number-card">
-                      #{order.token_number || order.id}
+                      #{getDisplayOrderNo(order)}
                     </div>
                   ))
                 )}
@@ -514,7 +531,10 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
                 <textarea
                   rows="2"
                   value={announcementDraft}
-                  onChange={(e) => setAnnouncementDraft(e.target.value)}
+                  onChange={(e) => {
+                    announcementDirtyRef.current = true;
+                    setAnnouncementDraft(e.target.value);
+                  }}
                   placeholder="Type message to announce on TV display..."
                   maxLength={240}
                 />
