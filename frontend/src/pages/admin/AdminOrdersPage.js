@@ -187,7 +187,7 @@ function AdminOrdersPage() {
     const content = `
       <html>
         <head>
-          <title>KITCHEN SLIP - Order #${order.id}</title>
+          <title>KITCHEN SLIP - Order #${order.token_number || order.id}</title>
           <style>
             body { font-family: 'Courier New', Courier, monospace; padding: 15px; color: #000; }
             .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 15px; }
@@ -211,7 +211,7 @@ function AdminOrdersPage() {
         <body>
           <div class="header">
             <div style="font-size: 14px; letter-spacing: 2px;">*** KITCHEN SLIP ***</div>
-            <div class="order-id">#${order.id}</div>
+            <div class="order-id">#${order.token_number || order.id}</div>
             <div class="order-time">${new Date(order.timestamp).toLocaleString()}</div>
             <div style="font-size: 14px; margin-top: 5px;">Customer: ${order.customer_name || order.user_name || 'N/A'}</div>
           </div>
@@ -473,7 +473,7 @@ function AdminOrdersPage() {
                   return (
                     <div key={order.id} className="order-card">
                       <div className="order-header">
-                        <div className="order-id">Order #{order.id}</div>
+                        <div className="order-id">Order #{order.token_number || order.id}</div>
                         <div 
                           className="status-badge"
                           style={{ backgroundColor: getStatusColor(order.status), color: getStatusTextColor(order.status) }}

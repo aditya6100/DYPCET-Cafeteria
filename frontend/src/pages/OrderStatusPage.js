@@ -196,7 +196,7 @@ function OrderStatusPage() {
           <p className="error-message">Order details not found.</p>
         ) : (
           <>
-            <div className="status-header"><h3>Order #{order.id} Status</h3></div>
+            <div className="status-header"><h3>Order #{order.token_number || order.id} Status</h3></div>
             <p style={{ textAlign: 'center', color: '#666', marginTop: '-0.75rem' }}>
               Status auto-refreshes every 10 seconds
               {lastSyncedAt ? ` • Last synced: ${new Date(lastSyncedAt).toLocaleTimeString()}` : ''}

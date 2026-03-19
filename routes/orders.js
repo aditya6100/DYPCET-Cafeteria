@@ -1255,10 +1255,20 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
         const orderCols = await getOrdersColumns();
         const tokenSelect = orderCols.has('token_number') ? ', token_number' : '';
         const preparing = await db.query(
-            `SELECT id${tokenSelect}, status, timestamp FROM orders WHERE LOWER(status) = 'preparing' ORDER BY timestamp ASC LIMIT 20`
+            `SELECT id${tokenSelect}, status, timestamp
+             FROM orders
+             WHERE DATE(timestamp) = CURDATE()
+               AND LOWER(status) = 'preparing'
+             ORDER BY timestamp ASC
+             LIMIT 20`
         );
         const ready = await db.query(
-            `SELECT id${tokenSelect}, status, timestamp FROM orders WHERE LOWER(status) IN ('ready', 'completed') ORDER BY timestamp DESC LIMIT 20`
+            `SELECT id${tokenSelect}, status, timestamp
+             FROM orders
+             WHERE DATE(timestamp) = CURDATE()
+               AND LOWER(status) IN ('ready', 'completed')
+             ORDER BY timestamp DESC
+             LIMIT 20`
         );
 
         const payload = { preparing, ready, generatedAt: new Date().toISOString() };
@@ -1574,8 +1584,11 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
     // @access  Protected (owner, admin, staff)
     router.get('/:id/bill.pdf', protect, asyncHandler(async (req, res) => {
         const orderId = req.params.id;
+        const orderCols = await getOrdersColumns();
+        const tokenExpr = orderCols.has('token_number') ? 'o.token_number' : 'NULL';
         const results = await db.query(
             `SELECT o.id, o.items, o.total AS total_amount, o.status, o.timestamp, o.transaction_id, o.user_id,
+                    ${tokenExpr} AS token_number,
                     payment_status, refund_status, refund_amount, refund_reason,
                     refund_admin_note, refund_requested_at, refund_processed_at,
                     refund_processed_by, refund_last_action, u.name AS customer_name
@@ -1644,7 +1657,7 @@ module.exports = (config, db, auth) => { // Accept shared config/db/auth
             pickupTime: `${hh}:${min}`,
             cashier: 'biller',
             billNo: order.id,
-            tokenNo: order.id,
+            tokenNo: order.token_number || order.id,
             items: billItems,
             totalQty,
             subTotal: subtotal.toFixed(2),

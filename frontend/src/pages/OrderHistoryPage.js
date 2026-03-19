@@ -83,7 +83,7 @@ function OrderHistoryPage() {
               <tbody>
                 {orders.map(order => (
                   <tr key={order.id}>
-                    <td>#{order.id}</td>
+                    <td>#{order.token_number || order.id}</td>
                     <td>{new Date(order.timestamp).toLocaleDateString()}</td>
                     <td>₹{(order.total_amount || 0).toFixed(2)}</td>
                     <td>{order.status}</td>

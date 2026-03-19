@@ -70,7 +70,7 @@ const speakText = (text, voice = null) => {
   }
 };
 
-const getDisplayOrderNo = (order) => (order?.id);
+const getDisplayOrderNo = (order) => (order?.token_number || order?.id);
 
 function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const [orders, setOrders] = useState([]);
@@ -106,18 +106,10 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
   const fetchOrders = useCallback(async ({ initial = false } = {}) => {
     try {
       if (initial) setLoading(true);
-      if (publicMode) {
-        const data = await apiRequest('/orders/display');
-        const preparing = Array.isArray(data?.preparing) ? data.preparing : [];
-        const ready = Array.isArray(data?.ready) ? data.ready : [];
-        setOrders([...preparing, ...ready]);
-      } else {
-        const data = await apiRequest('/orders/all');
-        if (!Array.isArray(data)) {
-          throw new Error('Invalid order data received.');
-        }
-        setOrders(data);
-      }
+      const data = await apiRequest('/orders/display');
+      const preparing = Array.isArray(data?.preparing) ? data.preparing : [];
+      const ready = Array.isArray(data?.ready) ? data.ready : [];
+      setOrders([...preparing, ...ready]);
       setLastUpdated(new Date());
     } catch (error) {
       if (error?.statusCode === 401 || String(error?.message || '').toLowerCase().includes('unauthorized')) {
@@ -130,7 +122,7 @@ function AdminDisplayBoardPage({ kiosk = false, publicMode = false }) {
     } finally {
       if (initial) setLoading(false);
     }
-  }, [publicMode, showAlert]);
+  }, [showAlert]);
 
   const fetchOrderPause = useCallback(async () => {
     try {
